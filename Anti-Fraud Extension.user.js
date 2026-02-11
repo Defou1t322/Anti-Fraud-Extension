@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.0.9
+// @version      7.1
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -64,7 +64,7 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.0.9";
+    const currentVersion = "7.1";
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -9961,6 +9961,8 @@ ${fraud.manager === managerName ? `
         const rows = document.querySelectorAll('tr td');
 
         rows.forEach(td => {
+            if (td.querySelector('.js-location-added')) return;
+
             const ipMatch = td.textContent.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/);
             if (ipMatch) {
                 const ip = ipMatch[0];
@@ -9969,6 +9971,8 @@ ${fraud.manager === managerName ? `
                 button.textContent = '📍';
                 button.type = 'button';
                 button.title = 'Показать местоположение';
+
+                button.classList.add('js-location-added');
 
                 Object.assign(button.style, {
                     marginLeft: '8px',
@@ -11035,6 +11039,31 @@ ${fraud.manager === managerName ? `
                     });
                 }
             }, 500);
+        }
+    });
+
+    document.addEventListener('click', (event) => {
+        const isGridAction = event.target.closest('.applyFiltersBtn') ||
+              event.target.closest('.dropdown-multiselect-checkbox-list-apply') ||
+              event.target.closest('.pagination a') ||
+              event.target.closest('.sort-link');
+
+        if (isGridAction) {
+            setTimeout(() => addLocationButton(), 1000);
+            setTimeout(() => addLocationButton(), 2000);
+            setTimeout(() => addLocationButton(), 5000);
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            const isFilterInput = event.target.closest('.filter-container input') ||
+                  event.target.closest('.filters input');
+
+            if (isFilterInput) {
+                setTimeout(() => addLocationButton(), 2000);
+                setTimeout(() => addLocationButton(), 4000);
+            }
         }
     });
 
