@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.1
+// @version      7.1.1
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -64,7 +64,7 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.1";
+    const currentVersion = "7.1.1";
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -3219,19 +3219,13 @@ ${fraud.manager === managerName ? `
                     #statistics-popup { z-index: 20000 !important; }
                     .popup-backdrop { z-index: 19999 !important; }
                     #updateButton {
-                        background-color: #6a5acd;
-                        color: white;
-                        padding: 8px 16px;
-                        border: none;
-                        border-radius: 5px;
-                        cursor: pointer;
-                        font-size: 14px;
-                        margin-left: 10px;
+                        background-color: #6a5acd; color: white; padding: 8px 16px;
+                        border: none; border-radius: 5px; cursor: pointer; font-size: 14px; margin-left: 10px;
                     }
                     #updateButton:hover { background-color: #5244a8; }
                     #stats-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
                     #stats-table th, #stats-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-                    .unread-comment-row { background-color: #fff5f5; border: 2px solid #ff4d4d !important; }
+                    .unread-comment-row { background-color: #fff5f5; border: 2px solid #ff4d4d !important; cursor: pointer; }
                     .tl-comment-placeholder { color: #888; font-size: 12px; font-style: italic; cursor: pointer; }
                 </style>
                 <div style="margin-bottom: 15px;">
@@ -3245,7 +3239,7 @@ ${fraud.manager === managerName ? `
                     <span style="color: #ff4500;">777: ${data.seven_count}</span>
                     <span style="color: #28a745;">Vegas: ${data.vegas_count}</span>
                 </div>
-                <div style="max-height: 500px; overflow-y: auto; border: 1px solid #eee;">
+                <div id="stats-container" style="max-height: 500px; overflow-y: auto; border: 1px solid #eee;">
                     <table id="stats-table">
                         <thead style="position: sticky; top: 0; background: white;">
                             <tr>
@@ -3265,14 +3259,15 @@ ${fraud.manager === managerName ? `
                                         ? entry.created_at.split('T')[1].substring(0, 5)
                                     : entry.created_at.substring(0, 5);
                                 }
+                                const isUnread = !isAdmin && unreadEntryIds.includes(entry.id);
                                 return `
-                                <tr ${!isAdmin && unreadEntryIds.includes(entry.id) ? 'class="unread-comment-row"' : ''}>
+                                <tr data-id="${entry.id}" class="${isUnread ? 'unread-comment-row' : ''}">
                                     <td style="font-size: 11px; color: #666;">${displayTime}</td>
                                     <td><a href="${entry.url}" target="_blank">${entry.player_id}</a></td>
                                     <td>${entry.project}</td>
                                     <td style="text-align: center;">${entry.autopayment === false ? '✔' : '❌'}</td>
                                     <td style="font-size: 12px;">${entry.comment || ''}</td>
-                                    <td ${isAdmin ? `class="tl-comment-cell-admin" data-entry-id="${entry.id}" data-comment="${encodeURIComponent(entry.tl_comment || '')}" style="cursor: pointer;"` : ''}>
+                                    <td ${isAdmin ? `class="tl-comment-cell-admin" data-entry-id="${entry.id}" data-comment="${encodeURIComponent(entry.tl_comment || '')}" style="cursor: pointer;"` : 'class="tl-comment-cell-user"'}>
                                         ${isAdmin ? (entry.tl_comment || '<span class="tl-comment-placeholder">Додати...</span>') : (entry.tl_comment ? DOMPurify.sanitize(entry.tl_comment) : '')}
                                     </td>
                                 </tr>`;
@@ -3294,6 +3289,15 @@ ${fraud.manager === managerName ? `
                     if (newPopup) newPopup.style.zIndex = "20000";
                 }
 
+                if (unreadEntryIds.length > 0) {
+                    setTimeout(() => {
+                        const firstUnread = document.querySelector('.unread-comment-row');
+                        if (firstUnread) {
+                            firstUnread.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    }, 500);
+                }
+
                 document.getElementById('updateButton').onclick = () => {
                     fetchStatistics(userId, document.getElementById('datePicker').value);
                 };
@@ -3302,6 +3306,26 @@ ${fraud.manager === managerName ? `
                     document.querySelectorAll('.tl-comment-cell-admin').forEach(el => {
                         el.onclick = () => {
                             openTlCommentEditor(userId, el.getAttribute('data-entry-id'), decodeURIComponent(el.getAttribute('data-comment') || ''));
+                        };
+                    });
+                } else {
+                    document.querySelectorAll('.unread-comment-row').forEach(row => {
+                        row.onclick = async function() {
+                            const entryId = this.getAttribute('data-id');
+                            try {
+                                const readResponse = await fetch(`${API_BASE_URL}/api/working/${entryId}/mark_read`, {
+                                    method: 'PUT',
+                                    headers: { 'Authorization': `Bearer ${token}` }
+                                });
+
+                                if (readResponse.ok) {
+                                    this.classList.remove('unread-comment-row');
+                                    this.style.border = "1px solid #ddd";
+                                    this.style.backgroundColor = "transparent";
+                                }
+                            } catch (err) {
+                                console.error("Помилка отметки прочтения:", err);
+                            }
                         };
                     });
                 }
@@ -3352,7 +3376,7 @@ ${fraud.manager === managerName ? `
 
                 notification.querySelector('.tl-notification-confirm-btn').addEventListener('click', async () => {
                     const firstComment = data.comments[0];
-                    await fetchStatistics(userId, firstComment.date, unreadEntryIds);
+                    await fetchStatistics(userId, firstComment.date, null, unreadEntryIds);
                     notification.remove();
                 });
 
