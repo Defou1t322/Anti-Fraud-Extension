@@ -1,17 +1,17 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.1.1
+// @version      7.1.2
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
-// @match        https://admin.vegas.ua/*
 // @match        https://admin.777.ua/*
+// @match        https://admin.vegas.ua/*
+// @match        https://admin.wildwinz.com/*
 // @match        https://admin.funrize.com/*
 // @match        https://admin.nolimitcoins.com/*
 // @match        https://admin.taofortune.com/*
 // @match        https://admin.funzcity.com/*
-// @match        https://admin.wildwinz.com/*
 // @match        https://admin.fortunewheelz.com/*
 // @match        https://admin.jackpotrabbit.com/*
 // @match        https://admin.sweepshark.com/*
@@ -22,6 +22,8 @@
 // @match        https://admin.vegasway.com/*
 // @match        https://admin.sweepico.com/*
 // @match        https://admin.firesevens.com/*
+// @match        https://admin.dexyplay.com/*
+// @match        https://admin.spintime.app/*
 // @match        https://app.powerbi.com/*
 // @updateURL 	 https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
 // @downloadURL  https://github.com/mrudiy/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
@@ -30,10 +32,9 @@
 // @grant        GM_getValue
 // @grant        GM_deleteValue
 // @grant        GM_addStyle
-// @connect      admin.777.ua
-// @connect      ip-api.com
-// @connect      admin.vegas.ua
 // @connect      admin.betking.com.ua
+// @connect      admin.777.ua
+// @connect      admin.vegas.ua
 // @connect      admin.wildwinz.com
 // @connect      admin.funrize.com
 // @connect      admin.nolimitcoins.com
@@ -49,8 +50,11 @@
 // @connect      admin.playtana.com
 // @connect      admin.vegasway.com
 // @connect      admin.firesevens.com
-// @connect      admin.sweepico.coma
+// @connect      admin.sweepico.com
+// @connect      admin.dexyplay.com
+// @connect      admin.spintime.app
 // @connect      api.easypay.ua
+// @connect      ip-api.com
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.5.17/jsrsasign-all-min.js
 // @require      https://cdn.jsdelivr.net/npm/moment/moment.min.js
@@ -64,7 +68,7 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.1.1";
+    const currentVersion = "7.1.2";
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -176,6 +180,22 @@
         const url = window.location.href;
         const match = url.match(/admin\.([^.]+)\./);
         return match ? match[1] : null;
+    }
+
+    function getDomain() {
+        try {
+            const url = new URL(window.location.href);
+            const host = url.hostname;
+
+            if (host.startsWith('admin.')) {
+                return host;
+            }
+
+            return null;
+        } catch (e) {
+            console.error("Invalid URL");
+            return null;
+        }
     }
 
     const style = document.createElement('style');
@@ -9176,8 +9196,15 @@ ${fraud.manager === managerName ? `
     };
 
     async function getProjectProfit(project, id) {
-        const baseURL = `https://admin.${project}.com/players/playersDetail/index/`;
-        const paymentsURL = `https://admin.${project}.com/payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bid%5D=&PaymentsItemsOutForm%5Bstatus%5D%5B%5D=pending&PaymentsItemsOutForm%5Bstatus%5D%5B%5D=closed&PaymentsItemsOutForm%5Bsearch_login%5D=${id}&PaymentsItemsOutForm%5Bis_vip%5D=&PaymentsItemsOutForm%5Bsearch_amount%5D=&PaymentsItemsOutForm%5Bsearch_amount_api%5D=&PaymentsItemsOutForm%5Bsearch_date%5D=&PaymentsItemsOutForm%5Bsearch_payed%5D=&PaymentsItemsOutForm%5Bsearch_requisite%5D=&PaymentsItemsOutForm%5Bgateway_id%5D=&PaymentsItemsOutForm%5Bis_auto_payout_allowed%5D=&PaymentsItemsOutForm%5Boutput_id%5D=&ajax=__grid&newPageSize=500`;
+
+        const domains = {
+            'spintime': 'spintime.app',
+        };
+
+        const projectHost = domains[project] || `${project}.com`;
+
+        const baseURL = `https://admin.${projectHost}/players/playersDetail/index/`;
+        const paymentsURL = `https://admin.${projectHost}/payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bid%5D=&PaymentsItemsOutForm%5Bstatus%5D%5B%5D=pending&PaymentsItemsOutForm%5Bstatus%5D%5B%5D=closed&PaymentsItemsOutForm%5Bsearch_login%5D=${id}&PaymentsItemsOutForm%5Bis_vip%5D=&PaymentsItemsOutForm%5Bsearch_amount%5D=&PaymentsItemsOutForm%5Bsearch_amount_api%5D=&PaymentsItemsOutForm%5Bsearch_date%5D=&PaymentsItemsOutForm%5Bsearch_payed%5D=&PaymentsItemsOutForm%5Bsearch_requisite%5D=&PaymentsItemsOutForm%5Bgateway_id%5D=&PaymentsItemsOutForm%5Bis_auto_payout_allowed%5D=&PaymentsItemsOutForm%5Boutput_id%5D=&ajax=__grid&newPageSize=500`;
 
         let deposits = 0;
         let withdrawals = 0;
@@ -9231,10 +9258,16 @@ ${fraud.manager === managerName ? `
     }
 
     async function getRelatedAccounts(currentProject, playerID) {
+        const domains = {
+            'spintime': 'spintime.app',
+        };
+
+        const currentHost = domains[currentProject.toLowerCase()] || `${currentProject}.com`;
+
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
                 method: 'POST',
-                url: `https://admin.${currentProject}.com/fraudDetectors/antifraudBase/personAccounts/?playerId=${userId}`,
+                url: `https://admin.${currentHost}/fraudDetectors/antifraudBase/personAccounts/?playerId=${playerID}`,
                 headers: {
                     "accept": "*/*",
                     "content-type": "application/x-www-form-urlencoded",
@@ -9242,7 +9275,7 @@ ${fraud.manager === managerName ? `
                 },
                 onload: (response) => {
                     if (response.status !== 200) {
-                        reject(new Error(`Server error: ${response.status} - ${response.responseText}`));
+                        reject(new Error(`Server error: ${response.status}`));
                         return;
                     }
                     const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
@@ -9251,14 +9284,17 @@ ${fraud.manager === managerName ? `
                     const projectLinks = {};
 
                     accounts.forEach(account => {
-                        const project = account.querySelector('.person-account__project b')?.textContent.trim();
+                        const projectRaw = account.querySelector('.person-account__project b')?.textContent.trim();
+                        const project = projectRaw ? projectRaw.toLowerCase() : null;
+
                         const successLabel = account.querySelector('.person-account__login b.label-success');
                         const id = successLabel?.querySelector('a')?.textContent.trim();
                         const link = successLabel?.querySelector('a')?.getAttribute('href');
 
                         if (project && id && successLabel) {
                             projectLinks[project] = link;
-                            if (project !== currentProject) {
+
+                            if (project !== currentProject.toLowerCase()) {
                                 relatedAccounts.push({ project, id });
                             }
                         }
@@ -9598,14 +9634,9 @@ ${fraud.manager === managerName ? `
 
     function analyzePayments(callback) {
         const playerID = getPlayerID();
-        const project = getProject();
+        const domain = getDomain();
 
-        if (!project) {
-            console.error('Project not found!');
-            return;
-        }
-
-        const requestUrl = `https://admin.${project}.com/payments/paymentsItemsIn/index/?PaymentsItemsInForm%5Bsearch_login%5D=${playerID}`;
+        const requestUrl = `https://${domain}/payments/paymentsItemsIn/index/?PaymentsItemsInForm%5Bsearch_login%5D=${playerID}`;
 
         GM_xmlhttpRequest({
             method: 'GET',
@@ -9699,8 +9730,9 @@ ${fraud.manager === managerName ? `
     function analyzeTransaction(callback) {
         const userId = window.location.pathname.split('/')[4];
         const project = getProject();
+        const domain = getDomain();
 
-        const requestUrl = `https://admin.${project}.com/players/playersItems/transactionLog/${userId}`;
+        const requestUrl = `https://${domain}/players/playersItems/transactionLog/${userId}`;
 
         GM_xmlhttpRequest({
             method: 'GET',
@@ -9770,11 +9802,10 @@ ${fraud.manager === managerName ? `
 
     function getPendings(callback) {
         const playerID = getPlayerID();
-        const project = getProject();
-        const baseURL = `https://admin.${project}.com/payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${playerID}`;
+        const domain = getDomain();
+        const baseURL = `https://${domain}/payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${playerID}`;
 
         let totalPending = 0;
-        console.log(baseURL)
 
         GM_xmlhttpRequest({
             method: 'GET',
@@ -9811,8 +9842,8 @@ ${fraud.manager === managerName ? `
     function getPendingss() {
         return new Promise((resolve, reject) => {
             const playerID = getPlayerID();
-            const project = getProject();
-            const baseURL = `https://admin.${project}.com/payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${playerID}`;
+            const domain = getDomain();
+            const baseURL = `https://${domain}/payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${playerID}`;
 
             let totalPending = 0;
 
@@ -11110,7 +11141,7 @@ ${fraud.manager === managerName ? `
             else if (currentUrl.includes('payments/paymentsItemsIn/index/?PaymentsItemsInForm%5Bsearch_login%5D=')) {
                 fetchAndRenderMiniStats();
             }
-            else if (currentHost.endsWith('.com') && currentUrl.includes('paymentsItemsOut/index')) {
+            else if ((currentHost.endsWith('.com') || currentHost.endsWith('.app')) && currentUrl.includes('paymentsItemsOut/index')) {
                 calculatePendingAmountUSA();
             }
             else if (currentHost.endsWith('.ua') && currentUrl.includes('paymentsItemsOut/index')) {
@@ -11158,7 +11189,7 @@ ${fraud.manager === managerName ? `
                 checkForUpdates();
                 sendPlayerSeenInfo();
                 await checkUnreadTlComments(managerData.id)
-            } else if (currentHost.endsWith('.com') && currentUrl.includes('players/playersItems/update')) {
+            } else if ((currentHost.endsWith('.com') || currentHost.endsWith('.app')) && currentUrl.includes('players/playersItems/update')) {
                 createUSAPopupBox();
                 analyzeTransaction();
                 buttonToSave();
@@ -11169,7 +11200,7 @@ ${fraud.manager === managerName ? `
                 checkForUpdates();
                 await activeUrlsManagers();
                 await checkUnreadTlComments(managerData.id)
-            } else if (currentHost.endsWith('.com') && currentUrl.includes('playersItems/balanceLog/')) {
+            } else if ((currentHost.endsWith('.com') || currentHost.endsWith('.app')) && currentUrl.includes('playersItems/balanceLog/')) {
                 setPageSize1k()
             } else if (currentUrl.includes('88beef36-f0a8-476f-a977-a885afe5d23f') ||currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205') || currentUrl.includes('92548677-d140-49c4-b5e5-9015673f461a') || currentUrl.includes('3fe70d7e-65c7-4736-a707-6f40d3de125b') || currentUrl.includes('b301aace-d9bb-4c7e-8efc-5d97782ab294') || currentUrl.includes('72c0a614-e695-4cb9-b884-465b04cfb2c5') || currentUrl.includes('6705e06d-cf36-47e5-ace3-0400e15b2ce2')) {
                 powerBIfetchHighlightedValues();
