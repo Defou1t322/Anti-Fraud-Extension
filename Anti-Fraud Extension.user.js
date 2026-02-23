@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.1.2
+// @version      7.1.3
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -68,7 +68,7 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.1.2";
+    const currentVersion = "7.1.3";
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -9263,7 +9263,6 @@ ${fraud.manager === managerName ? `
         };
 
         const currentHost = domains[currentProject.toLowerCase()] || `${currentProject}.com`;
-
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
                 method: 'POST',
@@ -9282,7 +9281,6 @@ ${fraud.manager === managerName ? `
                     const accounts = doc.querySelectorAll('.person-account');
                     const relatedAccounts = [];
                     const projectLinks = {};
-
                     accounts.forEach(account => {
                         const projectRaw = account.querySelector('.person-account__project b')?.textContent.trim();
                         const project = projectRaw ? projectRaw.toLowerCase() : null;
@@ -9417,7 +9415,7 @@ ${fraud.manager === managerName ? `
             let projectLinks = {};
 
             try {
-                const response = await getRelatedAccounts(currentProject, playerID);
+                const response = await getRelatedAccounts(currentProject, userId);
                 relatedAccounts = response.relatedAccounts;
                 projectLinks = response.projectLinks;
             } catch (relatedError) {
