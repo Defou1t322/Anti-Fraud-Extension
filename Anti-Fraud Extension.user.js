@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.1.3
+// @version      7.1.4
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -68,7 +68,7 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.1.3";
+    const currentVersion = "7.1.4";
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -5169,12 +5169,15 @@ ${fraud.manager === managerName ? `
         try {
             const playerID = getPlayerID();
             const baseURL = `${ProjectUrl}players/playersDetail/index/`;
+            // Видалити, коли задача Владонича зайде на всі проєкти
+            const tempFix = `PlayersDetailForm[login]=${encodeURIComponent(playerID)}&PlayersDetailForm[period]=2017.01.01+00:00:00+-+${getTomorrowDate()}+23:59:59&PlayersDetailForm[show_table]=1`
+
             const currentPlayerData = await new Promise((resolve, reject) => {
                 GM_xmlhttpRequest({
                     method: 'POST',
                     url: baseURL,
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    data: `PlayersDetailForm[login]=${encodeURIComponent(playerID)}&PlayersDetailForm[period]=2015.06.09+00:00:00+-+${getTomorrowDate()}+23:59:59&PlayersDetailForm[show_table]=1`,
+                    data: `backend_modules_players_models_PlayersDetailForm[login]=${encodeURIComponent(playerID)}&backend_modules_players_models_PlayersDetailForm[period]=2017.01.01+00:00:00+-+${getTomorrowDate()}+23:59:59&backend_modules_players_models_PlayersDetailForm[show_table]=1&${tempFix}`,
                     onload: response => {
                         const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
                         const table = doc.querySelector('.detail-view');
@@ -5451,11 +5454,13 @@ ${fraud.manager === managerName ? `
 
         const playerID = getPlayerID();
         const baseURL = `${ProjectUrl}players/playersDetail/index/`;
+        // Видалити, коли задача Владонича зайде на всі проєкти
+        const tempFix = `PlayersDetailForm[login]=${encodeURIComponent(playerID)}&PlayersDetailForm[period]=2017.01.01+00:00:00+-+${getTomorrowDate()}+23:59:59&PlayersDetailForm[show_table]=1`
         GM_xmlhttpRequest({
             method: 'POST',
             url: baseURL,
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            data: `PlayersDetailForm[login]=${encodeURIComponent(playerID)}&PlayersDetailForm[period]=2015.06.09+00:00:00+-+${getTomorrowDate()}+23:59:59&PlayersDetailForm[show_table]=1`,
+            data: `backend_modules_players_models_PlayersDetailForm[login]=${encodeURIComponent(playerID)}&backend_modules_players_models_PlayersDetailForm[period]=2017.01.01+00:00:00+-+${getTomorrowDate()}+23:59:59&backend_modules_players_models_PlayersDetailForm[show_table]=1&${tempFix}`,
             onload: response => {
                 container.removeChild(loader);
                 const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
