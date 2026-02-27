@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.1.4
+// @version      7.1.5
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -68,7 +68,7 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.1.4";
+    const currentVersion = "7.1.5";
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -5181,6 +5181,7 @@ ${fraud.manager === managerName ? `
                     onload: response => {
                         const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
                         const table = doc.querySelector('.detail-view');
+
                         if (!table) {
                             reject(new Error('Таблица текущего игрока не найдена'));
                             return;
@@ -5421,11 +5422,13 @@ ${fraud.manager === managerName ? `
     function calculateTotalInOut(domain, playerId) {
         return new Promise(resolve => {
             const baseURL = `${domain}players/playersDetail/index/`;
+            // Видалити, коли задача Владонича зайде на всі проєкти
+            const tempFix = `PlayersDetailForm[login]=${encodeURIComponent(playerId)}&PlayersDetailForm[period]=2017.01.01+00:00:00+-+${getTomorrowDate()}+23:59:59&PlayersDetailForm[show_table]=1`
             GM_xmlhttpRequest({
                 method: 'POST',
                 url: baseURL,
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                data: `PlayersDetailForm[login]=${encodeURIComponent(playerId)}&PlayersDetailForm[period]=2015.06.09+00:00:00+-+${getTomorrowDate()}+23:59:59&PlayersDetailForm[show_table]=1`,
+                data: `backend_modules_players_models_PlayersDetailForm[login]=${encodeURIComponent(playerId)}&backend_modules_players_models_PlayersDetailForm[period]=2017.01.01+00:00:00+-+${getTomorrowDate()}+23:59:59&backend_modules_players_models_PlayersDetailForm[show_table]=1&${tempFix}`,
                 onload: response => {
                     const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
                     const table = doc.querySelector('.detail-view');
@@ -10327,13 +10330,15 @@ ${fraud.manager === managerName ? `
             return `${year}.${month}.${day} ${isEnd ? "23:59:59" : "00:00:00"}`;
         };
         const period = `${formatDate(past, false)} - ${formatDate(now, true)}`;
-
         const formData = new FormData();
+        formData.append('backend_modules_players_models_PlayersDetailForm[login]', userId);
+        formData.append('backend_modules_players_models_PlayersDetailForm[period]', period);
+        formData.append('backend_modules_players_models_PlayersDetailForm[show_table]', '1');
+        formData.append('yt0', 'Применить');
+        // Видалити, коли задача Владонича зайде на всі проєкти
         formData.append('PlayersDetailForm[login]', userId);
         formData.append('PlayersDetailForm[period]', period);
         formData.append('PlayersDetailForm[show_table]', '1');
-        formData.append('yt0', 'Применить');
-
         try {
             const response = await fetch('/players/playersDetail/index/', {
                 method: 'POST',
