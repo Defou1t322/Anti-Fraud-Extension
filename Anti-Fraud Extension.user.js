@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.1.5
+// @version      7.1.6
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -68,7 +68,7 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.1.5";
+    const currentVersion = "7.1.6";
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -9895,8 +9895,23 @@ ${fraud.manager === managerName ? `
     }
 
     function getWinnings() {
-        const input = document.querySelector('input[data-field="winnings"]');
-        return input?.value?.trim() || '0.00';
+        const balanceInput = document.querySelector('#Players_winnings');
+        if (balanceInput) {
+            return balanceInput.value.trim();
+        }
+
+        const keywords = ['Winnings'];
+        const rows = document.querySelectorAll('tr');
+        for (const row of rows) {
+            if (keywords.some(keyword => row.textContent.includes(keyword))) {
+                const cells = row.querySelectorAll('td');
+                if (cells.length > 0) {
+                    return cells[0].textContent.trim();
+                }
+            }
+        }
+
+        return '0.00';
     }
 
     function enableFraudButton() {
