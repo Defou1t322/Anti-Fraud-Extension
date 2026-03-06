@@ -9895,17 +9895,8 @@ ${fraud.manager === managerName ? `
     }
 
     function getWinnings() {
-        const rows = document.querySelectorAll('tr');
-        for (const row of rows) {
-            if (row.textContent.includes('Winnings')) {
-                const cells = row.querySelectorAll('td');
-                if (cells.length > 0) {
-                    return cells[0].textContent.trim();
-                }
-            }
-        }
-
-        return '0.00';
+        const input = document.querySelector('input[data-field="winnings"]');
+        return input?.value?.trim() || '0.00';
     }
 
     function enableFraudButton() {
