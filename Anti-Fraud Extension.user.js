@@ -10461,6 +10461,9 @@ ${fraud.manager === managerName ? `
             formData.append('backend_modules_players_models_PlayersDetailForm[login]', userId);
             formData.append('backend_modules_players_models_PlayersDetailForm[period]', period);
             formData.append('backend_modules_players_models_PlayersDetailForm[show_table]', '1');
+            formData.append('PlayersDetailForm[login]', userId);
+            formData.append('PlayersDetailForm[period]', period);
+            formData.append('PlayersDetailForm[show_table]', '1');
             formData.append('yt0', 'Применить');
 
             const response = await fetch('/players/playersDetail/index/', {
