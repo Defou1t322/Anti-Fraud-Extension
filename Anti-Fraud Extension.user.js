@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.1.6
+// @version      7.1.7
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -68,7 +68,7 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.1.6";
+    const currentVersion = "7.1.7";
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -4393,7 +4393,82 @@ ${fraud.manager === managerName ? `
         document.head.appendChild(styleSheet);
     }
 
+    function getAntifraudCommentDate() {
+        const el = document.getElementById('gateway-method-description-visible-antifraud_manager');
+        if (!el) return null;
+
+        const text = el.innerText || el.textContent || '';
+        const firstLine = text.split('\n')[0].trim();
+
+        const match = firstLine.match(/^(\d{2})\.(\d{2})\.(\d{4})\s+в\s+(\d{2}):(\d{2})/);
+        if (!match) return null;
+
+        const [, day, month, year, hours, minutes] = match;
+        return new Date(
+            parseInt(year),
+            parseInt(month) - 1,
+            parseInt(day),
+            parseInt(hours),
+            parseInt(minutes)
+        );
+    }
+
+    function isCommentWithin7Days(date) {
+        if (!date) return false;
+        const now = new Date();
+        const diffMs = now - date;
+        const diffDays = diffMs / (1000 * 60 * 60 * 24);
+        return diffDays < 7;
+    }
+
+    function buildAntifraudComment() {
+        const date = getCurrentDate();
+        const time = getCurrentTime();
+        const initials = GM_getValue(initialsKey, '');
+        const language = GM_getValue(languageKey, 'російська');
+        const textToInsert = language === 'російська'
+        ? `${date} в ${time} проверен антифрод командой, нарушение не обнаружено/${initials}<br>`
+        : `${date} в ${time} перевірено антифрод командою, порушень не виявлено/${initials}<br>`;
+
+        return textToInsert;
+    }
+
+    function clickUpdateButton() {
+        const textarea = document.getElementById('PlayersComments_comment_antifraud_manager');
+        const visibleDiv = document.getElementById('gateway-method-description-visible-antifraud_manager');
+
+        if (textarea) {
+            textarea.value = textarea.value + '\u200B';
+        }
+        if (visibleDiv) {
+            visibleDiv.innerHTML = visibleDiv.innerHTML + '\u200B';
+        }
+
+        const btn = document.querySelector('.btn-update-comment-antifraud_manager');
+        if (btn) {
+            btn.click();
+        } else {
+            console.warn('[Antifraud] Кнопку "Обновить" не знайдено');
+        }
+    }
+
+    function setAntifraudComment(text) {
+        const visibleDiv = document.getElementById('gateway-method-description-visible-antifraud_manager');
+        const textarea = document.getElementById('PlayersComments_comment_antifraud_manager');
+
+        if (visibleDiv) {
+            const existingHTML = visibleDiv.innerHTML;
+            visibleDiv.innerHTML = text + '<br>' + existingHTML;
+        }
+        if (textarea) {
+            const existingText = textarea.value;
+            textarea.value = text + '<br>' + existingText;
+        }
+    }
+
     function handleCleanButtonClick() {
+        const commentDate = getAntifraudCommentDate();
+        const hasRecentComment = isCommentWithin7Days(commentDate);
         const dataToInsert = {
             date: getCurrentDate(),
             url: window.location.href,
@@ -4402,12 +4477,51 @@ ${fraud.manager === managerName ? `
             initials: GM_getValue('initialsKey', ''),
             comment: `Переглянутий в ${getCurrentTime()}`
         };
+
+        if (hasRecentComment) {
+            Swal.fire({
+                icon: 'info',
+                title: 'Коментар актуальний',
+                text: `Останнє пропрацювання: ${commentDate.toLocaleString('uk-UA')}. Оновлення без нового коментаря.`,
+                confirmButtonText: 'Оновити'
+            }).then(result => {
+                if (result.isConfirmed) {
+                    sendDataToServer(dataToInsert, token)
+                        .then(() => {
+                        clickUpdateButton();
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Успішно!',
+                            text: 'Користувач позначений як переглянутий'
+                        }).then(() => location.reload());
+                    })
+                        .catch(() => Swal.fire({
+                        icon: 'error',
+                        title: 'Помилка!',
+                        text: 'Не вдалося надіслати дані.'
+                    }));
+                }
+            });
+            return;
+        }
+
+        const newComment = buildAntifraudComment();
+        setAntifraudComment(newComment);
+
         sendDataToServer(dataToInsert, token)
-            .then(response => {
-            Swal.fire({ icon: 'success', title: 'Успішно!', text: 'Користувач позначений як переглянутий' })
-                .then(result => result.isConfirmed && location.reload());
+            .then(() => {
+            clickUpdateButton();
+            Swal.fire({
+                icon: 'success',
+                title: 'Успішно!',
+                text: 'Користувач позначений як переглянутий'
+            }).then(() => location.reload());  // <-- reload тут
         })
-            .catch(err => Swal.fire({ icon: 'error', title: 'Помилка!', text: 'Не вдалося надіслати дані.' }));
+            .catch(() => Swal.fire({
+            icon: 'error',
+            title: 'Помилка!',
+            text: 'Не вдалося надіслати дані.'
+        }));
     }
 
     function handlePendingPlusButtonClick(TotalPA) {
@@ -4427,7 +4541,7 @@ ${fraud.manager === managerName ? `
         const time = getCurrentTime();
         const initials = GM_getValue('initialsKey', '');
         const language = GM_getValue(languageKey, 'російська');
-        const colorPA = getColor(TotalPA);
+        const colorPA = getColor(TotalPA)
 
         const textToInsert = language === 'російська'
         ? `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`
@@ -4471,7 +4585,7 @@ ${fraud.manager === managerName ? `
         image.src = `${domain}/img/${project}.png`;
 
         applyStyles(image, {
-            maxWidth: project === 'vegas' ? '75%' : '100%', // Ограничиваем Vegas
+            maxWidth: project === 'vegas' ? '75%' : '100%',
             maxHeight: '100%',
             objectFit: 'contain'
         });
@@ -10323,134 +10437,163 @@ ${fraud.manager === managerName ? `
     async function fetchAndRenderMiniStats() {
         const urlParams = new URLSearchParams(window.location.search);
         const userId = urlParams.get('PaymentsItemsInForm[search_login]');
-
         if (!userId) return;
 
-        const now = new Date();
-        const past = new Date();
-        past.setDate(now.getDate() - 30);
-        const formatDate = (d, isEnd) => {
-            const year = d.getFullYear();
-            const month = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return `${year}.${month}.${day} ${isEnd ? "23:59:59" : "00:00:00"}`;
+        const getPeriod = (type) => {
+            const now = new Date();
+            const past = new Date();
+            if (type === '30d') past.setDate(now.getDate() - 30);
+            else if (type === '3m') past.setMonth(now.getMonth() - 3);
+            else if (type === '6m') past.setMonth(now.getMonth() - 6);
+            else if (type === 'year') past.setFullYear(now.getFullYear(), 0, 1);
+
+            const fmt = (d, isEnd) => {
+                const y = d.getFullYear();
+                const m = String(d.getMonth() + 1).padStart(2, '0');
+                const d2 = String(d.getDate()).padStart(2, '0');
+                return `${y}.${m}.${d2} ${isEnd ? '23:59:59' : '00:00:00'}`;
+            };
+            return `${fmt(past, false)} - ${fmt(now, true)}`;
         };
-        const period = `${formatDate(past, false)} - ${formatDate(now, true)}`;
-        const formData = new FormData();
-        formData.append('backend_modules_players_models_PlayersDetailForm[login]', userId);
-        formData.append('backend_modules_players_models_PlayersDetailForm[period]', period);
-        formData.append('backend_modules_players_models_PlayersDetailForm[show_table]', '1');
-        formData.append('yt0', 'Применить');
-        // Видалити, коли задача Владонича зайде на всі проєкти
-        formData.append('PlayersDetailForm[login]', userId);
-        formData.append('PlayersDetailForm[period]', period);
-        formData.append('PlayersDetailForm[show_table]', '1');
-        try {
+
+        const fetchStats = async (period) => {
+            const formData = new FormData();
+            formData.append('backend_modules_players_models_PlayersDetailForm[login]', userId);
+            formData.append('backend_modules_players_models_PlayersDetailForm[period]', period);
+            formData.append('backend_modules_players_models_PlayersDetailForm[show_table]', '1');
+            formData.append('yt0', 'Применить');
+
             const response = await fetch('/players/playersDetail/index/', {
                 method: 'POST',
                 body: formData,
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
-
             const htmlText = await response.text();
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(htmlText, 'text/html');
+            const doc = new DOMParser().parseFromString(htmlText, 'text/html');
             const rows = Array.from(doc.querySelectorAll('tr'));
+
             const countRaw = rows.find(r => r.querySelector('th')?.textContent.trim() === 'Deposits Count')?.querySelector('td')?.textContent.trim();
             const totalRaw = rows.find(r => r.querySelector('th')?.textContent.trim() === 'Deposits Total')?.querySelector('td')?.textContent.trim();
 
             const count = countRaw ? parseInt(countRaw.replace(/[^\d]/g, ''), 10) : 0;
             const total = totalRaw ? parseFloat(totalRaw.replace(/[^\d.]/g, '')) : 0;
-            const avg = count > 0 ? (total / count).toFixed(2) : "0.00";
+            const avg = count > 0 ? (total / count).toFixed(2) : '0.00';
 
+            return { count, total, avg };
+        };
+
+        const renderContent = (data) => `
+        <div style="padding: 18px 24px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: #64748b;">Кількість:</span>
+                <span style="font-weight: 600;">${data.count}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: #64748b;">Загальна сума:</span>
+                <span style="font-weight: 600;">${data.total.toLocaleString()}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 10px; border-top: 2px solid rgba(0,0,0,0.03);">
+                <span style="color: #1e293b; font-weight: bold;">AVG:</span>
+                <span style="font-weight: 800; color: #16a34a; font-size: 18px;">${data.avg}</span>
+            </div>
+        </div>
+    `;
+
+        try {
             let miniBox = document.getElementById('mini-deposit-stats');
-
             if (!miniBox) {
                 miniBox = document.createElement('div');
                 miniBox.id = 'mini-deposit-stats';
                 Object.assign(miniBox.style, {
-                    position: 'fixed',
-                    top: '20px',
-                    right: '20px',
-                    zIndex: '10000',
-                    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                    backdropFilter: 'blur(10px)',
-                    webkitBackdropFilter: 'blur(10px)',
-                    color: '#1a202c',
-                    borderRadius: '12px',
-                    fontSize: '14px',
-                    fontFamily: '"Inter", sans-serif',
-                    boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
-                    border: '1px solid rgba(255, 255, 255, 0.5)',
-                    minWidth: '280px',
-                    overflow: 'hidden',
-                    transition: 'height 0.3s ease'
+                    position: 'fixed', top: '20px', right: '20px', zIndex: '10000',
+                    backgroundColor: 'rgba(255, 255, 255, 0.9)', backdropFilter: 'blur(10px)',
+                    color: '#1a202c', borderRadius: '12px', fontSize: '14px',
+                    fontFamily: '"Inter", sans-serif', boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
+                    border: '1px solid rgba(255, 255, 255, 0.5)', minWidth: '280px',
+                    overflow: 'hidden'
                 });
                 document.body.appendChild(miniBox);
 
-                let isDragging = false;
-                let currentX, currentY, initialX, initialY, xOffset = 0, yOffset = 0;
-
+                let isDragging = false, currentX, currentY, initialX, initialY, xOffset = 0, yOffset = 0;
                 const dragStart = (e) => {
-                    initialX = e.clientX - xOffset;
-                    initialY = e.clientY - yOffset;
+                    initialX = e.clientX - xOffset; initialY = e.clientY - yOffset;
                     if (e.target.closest('#stats-header')) isDragging = true;
                 };
-
                 const dragEnd = () => { isDragging = false; };
-
                 const drag = (e) => {
-                    if (isDragging) {
-                        e.preventDefault();
-                        currentX = e.clientX - initialX;
-                        currentY = e.clientY - initialY;
-                        xOffset = currentX;
-                        yOffset = currentY;
-                        miniBox.style.transform = `translate(${currentX}px, ${currentY}px)`;
-                    }
+                    if (!isDragging) return;
+                    e.preventDefault();
+                    currentX = e.clientX - initialX; currentY = e.clientY - initialY;
+                    xOffset = currentX; yOffset = currentY;
+                    miniBox.style.transform = `translate(${currentX}px, ${currentY}px)`;
                 };
-
                 document.addEventListener('mousedown', dragStart);
                 document.addEventListener('mousemove', drag);
                 document.addEventListener('mouseup', dragEnd);
             }
 
-            miniBox.innerHTML = `
-            <div id="stats-header" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; cursor: move; border-bottom: 1px solid rgba(0,0,0,0.05); user-select: none;">
-                <b style="font-size: 13px; color: #2d3748;">Статистика депозитів за 30 днів</b>
-                <div id="stats-toggle" style="cursor: pointer; padding: 2px 8px; font-size: 18px; line-height: 1; color: #64748b; font-weight: bold;">−</div>
-            </div>
-            <div id="stats-body" style="padding: 18px 24px; display: flex; flex-direction: column; gap: 8px;">
-                <div style="display: flex; justify-content: space-between;">
-                    <span style="color: #64748b;">Кількість:</span>
-                    <span style="font-weight: 600;">${count}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between;">
-                    <span style="color: #64748b;">Загальна сума:</span>
-                    <span style="font-weight: 600;">${total.toLocaleString()}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 10px; border-top: 2px solid rgba(0,0,0,0.03);">
-                    <span style="color: #1e293b; font-weight: bold;">AVG:</span>
-                    <span style="font-weight: 800; color: #16a34a; font-size: 18px;">${avg}</span>
-                </div>
-            </div>
+            const tabs = [
+                { key: '30d', label: '30 днів' },
+                { key: '3m',  label: '3 міс' },
+                { key: '6m',  label: '6 міс' },
+                { key: 'year', label: 'Рік' }
+            ];
+
+            let activeTab = '30d';
+            const cache = {};
+
+            const tabStyle = (active) => `
+            padding: 5px 10px; cursor: pointer; border: none; background: ${active ? '#fff' : 'transparent'};
+            color: ${active ? '#3498db' : '#7f8c8d'}; font-weight: ${active ? 'bold' : 'normal'};
+            border-radius: 6px; font-size: 12px; transition: all 0.2s;
+            box-shadow: ${active ? '0 2px 5px rgba(0,0,0,0.1)' : 'none'};
         `;
+
+            const render = async (tabKey) => {
+                activeTab = tabKey;
+
+                miniBox.querySelectorAll('.period-tab').forEach(t => {
+                    const isActive = t.dataset.key === tabKey;
+                    t.style.cssText = tabStyle(isActive);
+                });
+
+                const bodyEl = miniBox.querySelector('#stats-body');
+                bodyEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #7f8c8d;">Завантаження...</div>';
+
+                if (!cache[tabKey]) {
+                    cache[tabKey] = await fetchStats(getPeriod(tabKey));
+                }
+
+                bodyEl.innerHTML = renderContent(cache[tabKey]);
+            };
+
+            miniBox.innerHTML = `
+            <div id="stats-header" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 18px; cursor: move; border-bottom: 1px solid rgba(0,0,0,0.05); user-select: none;">
+                <b style="font-size: 13px; color: #2d3748;">Статистика депозитів</b>
+                <div id="stats-toggle" style="cursor: pointer; padding: 2px 8px; font-size: 18px; color: #64748b; font-weight: bold;">−</div>
+            </div>
+            <div style="display: flex; gap: 4px; padding: 8px 12px; background: #f0f0f0;">
+                ${tabs.map(t => `<button class="period-tab" data-key="${t.key}" style="${tabStyle(t.key === activeTab)}">${t.label}</button>`).join('')}
+            </div>
+            <div id="stats-body"></div>
+        `;
+
+            miniBox.querySelectorAll('.period-tab').forEach(btn => {
+                btn.addEventListener('click', () => render(btn.dataset.key));
+            });
 
             const toggleBtn = miniBox.querySelector('#stats-toggle');
             const body = miniBox.querySelector('#stats-body');
+            const tabsBar = miniBox.querySelector('div[style*="f0f0f0"]');
 
             toggleBtn.onclick = (e) => {
                 e.stopPropagation();
-                if (body.style.display === 'none') {
-                    body.style.display = 'flex';
-                    toggleBtn.textContent = '−';
-                    miniBox.style.minWidth = '280px';
-                } else {
-                    body.style.display = 'none';
-                    toggleBtn.textContent = '+';
-                    miniBox.style.minWidth = 'auto';
-                }
+                const hidden = body.style.display === 'none';
+                body.style.display = hidden ? 'block' : 'none';
+                tabsBar.style.display = hidden ? 'flex' : 'none';
+                toggleBtn.textContent = hidden ? '−' : '+';
             };
+            await render(activeTab);
 
         } catch (e) {
             console.error('[Stats] Error:', e);
