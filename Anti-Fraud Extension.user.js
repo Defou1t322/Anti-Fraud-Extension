@@ -9717,7 +9717,7 @@ ${fraud.manager === managerName ? `
 
                     analyzeTransaction(totalUSD => {
                         const activityMoneyInfoElement = document.getElementById('activitymoney-info');
-                        const activityMoneyPercentage = totalDepositsAmount > 0 ? (totalUSD / totalDepositsAmount) * 100 : 0;
+                        const activityMoneyPercentage = totalDepositsAmount > 0 ? (totalUSD / totalDepositsAmount) * 100 : parseFloat(totalUSD);
                         if (activityMoneyInfoElement) {
                             const colorText = (text, condition) => condition ? `<span style="color: red;">${text}</span>` : text;
                             activityMoneyInfoElement.innerHTML = colorText(`<b>Activity Money: ${activityMoneyPercentage.toFixed(2)}%</b>`, activityMoneyPercentage >= 50);
@@ -9881,7 +9881,7 @@ ${fraud.manager === managerName ? `
                         rows.forEach((row) => {
                             const secondCell = row.querySelector('td:nth-child(2)');
                             const amountCell = row.querySelector('td:nth-child(3)');
-                            const commentCell = row.querySelector('td:nth-child(8)');
+                            const commentCell = row.querySelector('td:nth-child(9)');
                             const secondCellText = secondCell.textContent.trim().toLowerCase();
 
                             if (secondCell) {
