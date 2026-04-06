@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.1.7
+// @version      7.1.7.1
 // @description  Anti-Fraud Extension
-// @author       Maksym Rudyi
+// @author       Maksym Rudyi /fork Eduard
 // @match        https://admin.betking.com.ua/*
 // @match        https://admin.777.ua/*
 // @match        https://admin.vegas.ua/*
