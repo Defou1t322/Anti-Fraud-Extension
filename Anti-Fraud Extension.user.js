@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension
 // @namespace    http://tampermonkey.net/
-// @version      7.1.7
+// @version      7.1.8
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi
 // @match        https://admin.betking.com.ua/*
@@ -68,7 +68,7 @@
 
     const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
 
-    const currentVersion = "7.1.7";
+    const currentVersion = "7.1.8";
 
     let popupBox;
     const currentUrl = window.location.href;
@@ -4427,8 +4427,8 @@ ${fraud.manager === managerName ? `
         const initials = GM_getValue(initialsKey, '');
         const language = GM_getValue(languageKey, 'російська');
         const textToInsert = language === 'російська'
-        ? `${date} в ${time} проверен антифрод командой, нарушение не обнаружено/${initials}<br>`
-        : `${date} в ${time} перевірено антифрод командою, порушень не виявлено/${initials}<br>`;
+        ? `${date} в ${time} проверен антифрод командой/${initials}<br>`
+        : `${date} в ${time} перевірено антифрод командою/${initials}<br>`;
 
         return textToInsert;
     }
