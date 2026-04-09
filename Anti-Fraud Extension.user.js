@@ -526,6 +526,11 @@
                 existingGreenButton.remove();
             }
 
+            const existingStrikeButton = document.getElementById('strike-button');
+            if (existingStrikeButton) {
+                existingStrikeButton.remove();
+            }
+
             const checkButton = document.createElement('button');
             checkButton.id = 'check-button';
             checkButton.type = 'button';
@@ -571,8 +576,18 @@
                 document.execCommand('foreColor', false, 'green');
             };
 
+            const strikeButton = document.createElement('button');
+            strikeButton.id = 'strike-button';
+            strikeButton.type = 'button';
+            strikeButton.innerText = 'Strike';
+            strikeButton.style.marginLeft = '5px';
+            strikeButton.onclick = () => {
+                document.execCommand('strikeThrough', false, null);
+            };
+
             formatableTextDiv.insertBefore(checkButton, formatableTextDiv.firstChild);
             formatableTextDiv.insertBefore(greenButton, checkButton.nextSibling);
+            formatableTextDiv.insertBefore(strikeButton, greenButton.nextSibling);
         }
     }
 
