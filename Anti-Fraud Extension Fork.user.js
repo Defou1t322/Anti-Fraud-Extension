@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anti-Fraud Extension /Fork
 // @namespace    http://tampermonkey.net/
-// @version      7.1.8
+// @version      7.1.9
 // @description  Anti-Fraud Extension
 // @author       Maksym Rudyi /fork Eduard
 // @match        https://admin.betking.com.ua/*
