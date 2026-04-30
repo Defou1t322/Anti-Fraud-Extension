@@ -1,0 +1,11511 @@
+// ==UserScript==
+// @name         Anti-Fraud Extension /Fork
+// @namespace    http://tampermonkey.net/
+// @version      7.1.9
+// @description  Anti-Fraud Extension /Fork
+// @author       Maksym Rudyi /fork Eduard
+// @match        https://admin.betking.com.ua/*
+// @match        https://admin.777.ua/*
+// @match        https://admin.vegas.ua/*
+// @match        https://admin.wildwinz.com/*
+// @match        https://admin.funrize.com/*
+// @match        https://admin.nolimitcoins.com/*
+// @match        https://admin.taofortune.com/*
+// @match        https://admin.funzcity.com/*
+// @match        https://admin.fortunewheelz.com/*
+// @match        https://admin.jackpotrabbit.com/*
+// @match        https://admin.sweepshark.com/*
+// @match        https://admin.scarletsands.com/*
+// @match        https://admin.stormrush.com/*
+// @match        https://admin.mrgoodwin.com/*
+// @match        https://admin.playtana.com/*
+// @match        https://admin.vegasway.com/*
+// @match        https://admin.sweepico.com/*
+// @match        https://admin.firesevens.com/*
+// @match        https://admin.dexyplay.com/*
+// @match        https://admin.spintime.app/*
+// @match        https://app.powerbi.com/*
+// @updateURL 	 https://github.com/Defou1t322/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
+// @downloadURL  https://github.com/Defou1t322/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
+// @grant        GM_xmlhttpRequest
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_deleteValue
+// @grant        GM_addStyle
+// @connect      admin.betking.com.ua
+// @connect      admin.777.ua
+// @connect      admin.vegas.ua
+// @connect      admin.wildwinz.com
+// @connect      admin.funrize.com
+// @connect      admin.nolimitcoins.com
+// @connect      admin.taofortune.com
+// @connect      admin.funzcity.com
+// @connect      admin.wildwinz.com
+// @connect      admin.fortunewheelz.com
+// @connect      admin.jackpotrabbit.com
+// @connect      admin.scarletsands.com
+// @connect      admin.sweepshark.com
+// @connect      admin.stormrush.com
+// @connect      admin.mrgoodwin.com
+// @connect      admin.playtana.com
+// @connect      admin.vegasway.com
+// @connect      admin.firesevens.com
+// @connect      admin.sweepico.com
+// @connect      admin.dexyplay.com
+// @connect      admin.spintime.app
+// @connect      api.easypay.ua
+// @connect      ip-api.com
+// @require      https://code.jquery.com/jquery-3.6.0.min.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.5.17/jsrsasign-all-min.js
+// @require      https://cdn.jsdelivr.net/npm/moment/moment.min.js
+// @require      https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/sweetalert2/11.7.1/sweetalert2.all.min.js
+// @resource     SWEETALERT2_CSS https://cdnjs.cloudflare.com/ajax/libs/sweetalert2/11.7.1/sweetalert2.min.css
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    const API_BASE_URL = 'https://antifraud-runtime-eu-w4b.infng.net';
+
+    const currentVersion = "7.1.8";
+
+    let popupBox;
+    const currentUrl = window.location.href;
+    const initialsKey = 'userInitials';
+    const urlPath = window.location.pathname;
+    const userId = urlPath.split('/')[4];
+    const ProjectUrl = {
+        '777.ua': 'https://admin.777.ua/',
+        'vegas.ua': 'https://admin.vegas.ua/',
+        'wildwinz.com': 'https://admin.wildwinz.com/',
+        'com.ua': 'https://admin.betking.com.ua/',
+    }[window.location.hostname.split('.').slice(-2).join('.')] || 'https://admin.default.ua/';
+    const initialUrl = window.location.href;
+
+    const sharedStorageKey = 'highlightRulesShared';
+    const languageKey = 'language';
+    const ndfDisplayKey = 'ndfDisplay';
+    const reminderBlinkKey = 'reminderDisplayBlinkKey';
+    const lastSeenArticleIdKey = 'lastSeenArticleId';
+    const amountDisplayKey = 'amountDisplay';
+    const fastPaintCardsDisplayKey = 'fastPaintCardsDisplay';
+    const fullNumberCardDisplayKey = 'fullNumberCardDisplay';
+    const progressBarDisplayKey = 'progressBarDisplay';
+    const token = GM_getValue('authToken', null);
+    let managerData = null;
+
+    const currencySymbols = new Map([
+        ['UAH', '₴'],
+        ['CAD', '$'],
+        ['EUR', '€'],
+        ['PLN', 'zł'],
+    ]);
+
+    const CURRENCY_CONFIG = {
+        'UAH': { minBalance: 1000, minPending: 100, symbol: '₴' },
+        'PLN': { minBalance: 500, minPending: 100, symbol: 'zł' },
+        'CAD': { minBalance: 100, minPending: 100, symbol: '$' },
+        'EUR': { minBalance: 100, minPending: 100, symbol: '€' },
+        'DEFAULT': { minBalance: 100, minPending: 100, symbol: '' }
+    };
+
+    const TRANSLATIONS = {
+        'українська': {
+            balance: 'На балансі',
+            pending: 'На виплаті',
+            safe: 'В сейфі',
+            checked: 'перевірено антифрод командою'
+        },
+        'російська': {
+            balance: 'На балансе',
+            pending: 'На выплате',
+            safe: 'В сейфе',
+            checked: 'проверен антифрод командой'
+        }
+    };
+
+    const ALERT_THRESHOLD = 1000000;
+
+    const TEAMS = ['', 'Betting', 'Product', 'Financial'];
+
+    const stylerangePicker = document.createElement('style');
+    stylerangePicker.textContent = '@import url("https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css");';
+    document.head.appendChild(stylerangePicker);
+
+
+    const months = {
+        "січня": "01", "января": "01",
+        "лютого": "02", "февраля": "02",
+        "березня": "03", "марта": "03",
+        "квітня": "04", "апреля": "04",
+        "травня": "05", "мая": "05",
+        "червня": "06", "июня": "06",
+        "липня": "07", "июля": "07",
+        "серпня": "08", "августа": "08",
+        "вересня": "09", "сентября": "09",
+        "жовтня": "10", "октября": "10",
+        "листопада": "11", "ноября": "11",
+        "грудня": "12", "декабря": "12"
+    };
+
+    const defaultRules = [
+        { text: 'Ввод средств', color: '#7cfc00' },
+        { text: 'Вывод средств', color: '#f0e68c' },
+        { text: 'Отыгрывание бонуса', color: '#ff69b4' },
+        { text: 'Начисление cashback', color: '#ff69b4' },
+        { text: 'Присвоение бонуса', color: '#1e90ff' },
+        { text: 'Активация бонуса', color: '#1e90ff' },
+        { text: 'Отмена', color: '#ff4500' }
+    ];
+
+    function getRules() {
+        const rules = localStorage.getItem(sharedStorageKey);
+        return rules ? JSON.parse(rules) : defaultRules;
+    }
+
+    function saveRules(rules) {
+        localStorage.setItem(sharedStorageKey, JSON.stringify(rules));
+    }
+
+    function getCurrentDate() {
+        const today = new Date();
+        const day = String(today.getDate()).padStart(2, '0');
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const year = today.getFullYear();
+        return `${day}.${month}.${year}`;
+    }
+
+    function getProject() {
+        const url = window.location.href;
+        const match = url.match(/admin\.([^.]+)\./);
+        return match ? match[1] : null;
+    }
+
+    function getDomain() {
+        try {
+            const url = new URL(window.location.href);
+            const host = url.hostname;
+
+            if (host.startsWith('admin.')) {
+                return host;
+            }
+
+            return null;
+        } catch (e) {
+            console.error("Invalid URL");
+            return null;
+        }
+    }
+
+    const style = document.createElement('style');
+    style.id = 'dynamic-styles';
+    document.head.append(style);
+
+    function applyBackgroundColor(row, color) {
+        if (row.style.backgroundColor !== color) {
+            row.style.backgroundColor = color;
+        }
+    }
+
+    function updateColors() {
+        const rules = getRules();
+        let newStyleContent = `
+            tr td {
+                background-color: transparent !important;
+            }
+            #color-popup {
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                background: white;
+                border: 1px solid #ccc;
+                border-radius: 10px;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                padding: 20px;
+                z-index: 1000;
+                display: none;
+                width: 350px;
+                font-family: Arial, sans-serif;
+            }
+            #color-popup h2 {
+                margin-top: 0;
+                font-size: 18px;
+                text-align: center;
+            }
+            #color-popup input[type="color"], #color-popup input[type="text"] {
+                margin: 5px 0;
+                display: block;
+                width: calc(100% - 12px);
+                padding: 5px;
+                border-radius: 5px;
+                border: 1px solid #ccc;
+                font-size: 14px;
+            }
+            #color-popup input[type="color"] {
+                height: 30px;
+            }
+            #color-popup button {
+                display: block;
+                width: calc(100% - 20px);
+                margin: 10px auto;
+                padding: 10px;
+                background: #007bff;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 14px;
+                transition: background 0.3s;
+            }
+            #color-popup button:hover {
+                background: #0056b3;
+            }
+            .delete-rule {
+                background: #dc3545 !important;
+            }
+            .delete-rule:hover {
+                background: #c82333 !important;
+            }
+            .popup-rule {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 10px;
+            }
+            .popup-rule input {
+                flex-grow: 1;
+                margin-right: 5px;
+            }
+            .popup-rule button {
+                margin: 0;
+                width: auto;
+                padding: 5px;
+                font-size: 12px;
+            }
+            .toggle-popup-button {
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                background: #28a745;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                padding: 10px;
+                cursor: pointer;
+                z-index: 1000;
+                font-size: 14px;
+                transition: background 0.3s;
+            }
+            .toggle-popup-button:hover {
+                background: #218838;
+            }
+        `;
+
+        document.getElementById('dynamic-styles').textContent = newStyleContent;
+        processTableRows();
+    }
+
+    function processTableRows() {
+        const rules = getRules();
+        const rows = document.querySelectorAll('table.items.table.table-striped.table-hover tbody tr');
+        const batchSize = 50;
+        let index = 0;
+
+        function processBatch() {
+            const end = Math.min(index + batchSize, rows.length);
+
+            for (; index < end; index++) {
+                const row = rows[index];
+                const cells = row.querySelectorAll('td');
+                let colorApplied = false;
+
+                cells.forEach(cell => {
+                    rules.forEach(rule => {
+                        if (cell.textContent.includes(rule.text)) {
+                            applyBackgroundColor(row, rule.color);
+                            colorApplied = true;
+                        }
+                    });
+                });
+
+                if (!colorApplied) {
+                    row.style.backgroundColor = '';
+                }
+            }
+
+            if (index < rows.length) {
+                requestAnimationFrame(processBatch);
+            }
+        }
+
+        requestAnimationFrame(processBatch);
+    }
+
+    function createTransactionsPopup() {
+        const rules = getRules();
+        const popup = document.createElement('div');
+        popup.id = 'color-popup';
+        let rulesHtml = '<h2>Керування кольорами</h2>';
+
+        rules.forEach((rule, index) => {
+            rulesHtml += `
+                <div class="popup-rule" data-index="${index}">
+                    <input type="text" value="${rule.text}" class="rule-text" placeholder="Текст">
+                    <input type="color" value="${rule.color}" class="rule-color">
+                    <button class="delete-rule">Видалити</button>
+                </div>
+            `;
+        });
+
+        popup.innerHTML = `
+            ${rulesHtml}
+            <button id="add-rule">Додати правило</button>
+            <button id="save-rules">Зберегти</button>
+            <button id="close-popup">Закрити</button>
+        `;
+
+        document.body.append(popup);
+
+        document.querySelectorAll('.delete-rule').forEach(button => {
+            button.addEventListener('click', event => {
+                const index = event.target.parentElement.getAttribute('data-index');
+                rules.splice(index, 1);
+                saveRules(rules);
+                updateTransactionsPopup();
+                updateColors();
+            });
+        });
+
+        document.getElementById('add-rule').addEventListener('click', () => {
+            rules.push({ text: '', color: '#ffffff' });
+            saveRules(rules);
+            updateTransactionsPopup();
+        });
+
+        document.getElementById('save-rules').addEventListener('click', () => {
+            document.querySelectorAll('.popup-rule').forEach(div => {
+                const index = div.getAttribute('data-index');
+                rules[index].text = div.querySelector('.rule-text').value;
+                rules[index].color = div.querySelector('.rule-color').value;
+            });
+            saveRules(rules);
+            updateColors();
+        });
+
+        document.getElementById('close-popup').addEventListener('click', () => {
+            popup.style.display = 'none';
+            document.querySelector('.toggle-popup-button').style.display = 'block';
+        });
+    }
+
+    async function checkForNewArticles() {
+        const articles = await fetchArticles();
+
+
+        if (articles.length > 0) {
+            const latestArticle = articles[0];
+            const lastSeenArticleId = GM_getValue(lastSeenArticleIdKey);
+            if (latestArticle.id > lastSeenArticleId) {
+                GM_setValue(lastSeenArticleIdKey, latestArticle.id);
+                GM_setValue(reminderBlinkKey, true);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function updateTransactionsPopup() {
+        const popup = document.getElementById('color-popup');
+        if (popup) {
+            document.body.removeChild(popup);
+        }
+        createTransactionsPopup();
+        document.getElementById('color-popup').style.display = 'block';
+    }
+
+    function initTransactionsPage() {
+        const togglePopupButton = document.createElement('button');
+        togglePopupButton.textContent = 'Керувати кольорами';
+        togglePopupButton.className = 'toggle-popup-button';
+        document.body.append(togglePopupButton);
+
+        togglePopupButton.addEventListener('click', () => {
+            const popup = document.getElementById('color-popup');
+            if (popup) {
+                popup.style.display = 'block';
+                togglePopupButton.style.display = 'none';
+            } else {
+                createTransactionsPopup();
+                document.getElementById('color-popup').style.display = 'block';
+                togglePopupButton.style.display = 'none';
+            }
+        });
+
+        updateColors();
+    }
+
+    function getCurrentDateFormatted() {
+        const today = new Date();
+        const day = String(today.getDate()).padStart(2, '0');
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const year = today.getFullYear();
+        return `${day}${month}${year}`;
+    }
+
+    function insertTextAtCursor(text) {
+        const div = document.getElementById('gateway-method-description-visible-common');
+        if (div) {
+            div.focus();
+            document.execCommand('insertHTML', false, text);
+            syncFields(div.innerHTML, 'common');
+        }
+    }
+
+    function addForeignButton() {
+        const currentLanguage = GM_getValue(languageKey, 'російська');
+        const formatableTextDiv = document.getElementById('formatable-text-common');
+        if (formatableTextDiv) {
+            const isRussian = currentLanguage === 'російська';
+            const text = isRussian ? 'Чужая' : 'Чужа';
+            const innerText = `${getCurrentDateFormatted()} <b><font color="#ff0000">${text.toUpperCase()}</font></b>`;
+
+            const foreignButton = document.createElement('button');
+            foreignButton.type = 'button';
+            foreignButton.innerText = text;
+            foreignButton.onclick = () => insertTextAtCursor(innerText);
+
+            formatableTextDiv.insertBefore(foreignButton, formatableTextDiv.firstChild);
+        }
+    }
+
+    function addExcludeButton() {
+        const formatableTextDiv = document.getElementById('formatable-text-antifraud_manager');
+
+        if (formatableTextDiv) {
+            const existingButton = document.getElementById('exclude-button');
+            if (existingButton) {
+                existingButton.remove();
+            }
+
+            const excludeButton = document.createElement('button');
+            excludeButton.id = 'exclude-button';
+            excludeButton.type = 'button';
+            excludeButton.innerHTML = 'Виключити з моніторингу';
+            excludeButton.title = 'Виключити з моніторингу';
+            excludeButton.style.marginLeft = '5px';
+
+            excludeButton.onclick = () => {
+                const date = getCurrentDate();
+                const time = getCurrentTime();
+                const initials = GM_getValue(initialsKey);
+                let textToInsert = `${date} в ${time} виключений з моніторингу/${initials}<br>`;
+
+                insertTextIntoField(textToInsert);
+            };
+
+            const boldButton = formatableTextDiv.querySelector('button[onclick="makeBold()"]');
+            if (boldButton) {
+                boldButton.insertAdjacentElement('afterend', excludeButton);
+            }
+        }
+    }
+
+
+    function addCheckButton(TotalPA, Balance, totalPending) {
+        const formatableTextDiv = document.getElementById('formatable-text-antifraud_manager');
+
+        if (formatableTextDiv) {
+            const existingButton = document.getElementById('check-button');
+            if (existingButton) {
+                existingButton.remove();
+            }
+
+            const existingGreenButton = document.getElementById('green-button');
+            if (existingGreenButton) {
+                existingGreenButton.remove();
+            }
+
+            const existingStrikeButton = document.getElementById('strike-button');
+            if (existingStrikeButton) {
+                existingStrikeButton.remove();
+            }
+
+            const checkButton = document.createElement('button');
+            checkButton.id = 'check-button';
+            checkButton.type = 'button';
+            checkButton.innerText = 'Коментар';
+            checkButton.onclick = () => {
+                const date = getCurrentDate();
+                const time = getCurrentTime();
+                const initials = GM_getValue(initialsKey);
+                const lang = GM_getValue(languageKey, 'російська');
+                const currency = getCurrency();
+                const safeBalance = getInnerBalanceValue();
+                const showAmount = GM_getValue(amountDisplayKey, true);
+
+                const config = CURRENCY_CONFIG[currency] || CURRENCY_CONFIG['DEFAULT'];
+                const t = TRANSLATIONS[lang] || TRANSLATIONS['російська'];
+                const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA < 1 ? 'orange' : 'red');
+
+                const createEntry = (label, value, minLimit) => {
+                    if (value < minLimit) return '';
+                    const style = value > ALERT_THRESHOLD ? 'style="color: red;"' : '';
+
+                    const displayValue = formatCurrency(value, showAmount, config.symbol);
+
+                    return `<b>${label}:</b> <b ${style}>${displayValue}</b> | `;
+                };
+
+                let textToInsert = `${date} в ${time} ${t.checked}/${initials}<br>` +
+                    `<b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | `;
+
+                textToInsert += createEntry(t.balance, Balance, config.minBalance);
+                textToInsert += createEntry(t.pending, totalPending, config.minPending);
+                textToInsert += createEntry(t.safe, safeBalance, 4200);
+
+                insertTextIntoField(textToInsert);
+            };
+
+            const greenButton = document.createElement('button');
+            greenButton.id = 'green-button';
+            greenButton.type = 'button';
+            greenButton.innerText = 'Green';
+            greenButton.style.marginLeft = '5px';
+            greenButton.onclick = () => {
+                document.execCommand('foreColor', false, 'green');
+            };
+
+            const strikeButton = document.createElement('button');
+            strikeButton.id = 'strike-button';
+            strikeButton.type = 'button';
+            strikeButton.innerText = 'Strike';
+            strikeButton.style.marginLeft = '5px';
+            strikeButton.onclick = () => {
+                document.execCommand('strikeThrough', false, null);
+            };
+
+            formatableTextDiv.insertBefore(checkButton, formatableTextDiv.firstChild);
+            formatableTextDiv.insertBefore(greenButton, checkButton.nextSibling);
+            formatableTextDiv.insertBefore(strikeButton, greenButton.nextSibling);
+        }
+    }
+
+    function addFraudPageButton(isInFraudList, fraudId = null) {
+        const container = document.querySelector('.form-actions');
+        if (container) {
+            let button = document.querySelector('#fraud-button');
+            if (!button) {
+                button = document.createElement('button');
+                button.id = 'fraud-button';
+                container.appendChild(button);
+
+                const style = document.createElement('style');
+                style.textContent = `
+            #fraud-button {
+                background-color: purple;
+                color: white;
+                border: none;
+                padding: 6px 12px;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 16px;
+                margin-right: 25px;
+                margin-left: 10px;
+            }
+            #fraud-button i {
+                margin-right: 5px;
+            }
+        `;
+                document.head.appendChild(style);
+            }
+
+            if (isInFraudList) {
+                button.innerHTML = '<i class="fa fa-eye-slash"></i> Видалити';
+                button.onclick = async (event) => {
+                    event.preventDefault();
+                    if (fraudId) {
+                        await deleteFraud(fraudId);
+                        location.reload();
+                    }
+                };
+            } else {
+                button.innerHTML = '<i class="fa fa-eye"></i> Під нагляд';
+                button.onclick = async (event) => {
+                    event.preventDefault();
+                    const comment = await Swal.fire({
+                        title: 'Введіть коментар',
+                        input: 'text',
+                        inputPlaceholder: 'Ваш коментар',
+                        showCancelButton: true,
+                        confirmButtonText: 'Додати',
+                        cancelButtonText: 'Скасувати',
+                    }).then(result => result.value);
+
+                    if (comment) {
+                        const playerId = getPlayerID();
+                        const url = window.location.href;
+                        await addFraud(playerId, url, comment);
+                        location.reload();
+                    }
+                };
+            }
+        }
+    }
+
+    const COMBINED_STYLES = `
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    #popup-container {
+        min-height: 200px;
+        overflow-y: auto;
+        white-space: normal;
+        word-wrap: break-word;
+        font-family: Arial, sans-serif;
+    }
+    .profit-section {
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 5px;
+        background-color: #f9f9f9;
+        text-align: justify;
+    }
+    .main-profit {
+        border-bottom: 2px solid #3498db;
+    }
+    .related-projects {
+        border-bottom: 1px dashed #ccc;
+    }
+    .total-profit {
+        background-color: #e6f3ff;
+        font-weight: bold;
+    }
+    .project-link {
+        color: #2c3e50;
+        text-decoration: none;
+        font-weight: bold;
+    }
+    .project-link:hover {
+        text-decoration: underline;
+        color: #3498db;
+    }
+`;
+
+    async function checkUserInFraudList() {
+
+        const playerId = getPlayerID();
+        const url = window.location.href;
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/check_user_in_fraud`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ player_id: playerId, url: url })
+            });
+
+            const data = await response.json();
+
+            if (data.fraudExists) {
+
+                const formattedDate = new Intl.DateTimeFormat('ru-RU', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                }).format(new Date(data.date)).replace(',', '')
+
+                addFraudPageButton(true, data.fraud_id);
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-warning';
+                alertDiv.style.backgroundColor = '#6a0dad';
+                alertDiv.style.color = '#fff';
+                alertDiv.style.borderColor = '#5a00a2';
+                console.log(data)
+                alertDiv.innerHTML = `
+                <strong>Увага!</strong> Користувач під наглядом.
+                <br><strong>Менеджер:</strong> ${data.manager_name}
+                <br><strong>Коментар:</strong> ${data.comment || 'Немає коментарів'}
+                <br><strong>Дата:</strong> ${formattedDate}
+            `;
+
+                const table = document.querySelector('.detail-view.table.table-striped');
+
+                if (table) {
+                    table.parentNode.insertBefore(alertDiv, table);
+                } else {
+                    console.error('Таблица не найдена.');
+                }
+            } else {
+                addFraudPageButton(false);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
+    function getDateFromField() {
+        const content = document.getElementById("gateway-method-description-visible-antifraud_manager").innerText;
+        const firstLine = content.split('\n')[0];
+        const dateRegex = /\d{2}\.\d{2}\.\d{4}/;
+        const dateMatch = firstLine.match(dateRegex);
+        return dateMatch ? dateMatch[0] : null;
+    }
+
+    function correctData(dateString) {
+        if (!dateString) return null;
+        const [day, month, year] = dateString.split('.').map(Number);
+        return new Date(year, month - 1, day);
+    }
+
+    const parseDateCheck = dateString => {
+        if (!dateString || typeof dateString !== 'string') return null;
+
+        if (dateString.includes('-')) {
+            const [year, month, day] = dateString.split('-');
+            return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        } else if (dateString.includes('.')) {
+            const [day, month, year] = dateString.split('.');
+            return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        }
+        return null;
+    };
+
+    const formatDateToDDMMYYYY = date => {
+        if (!date || isNaN(date.getTime())) return '';
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0'); // +1, так как месяцы 0-11
+        const year = date.getFullYear();
+        return `${day}.${month}.${year}`;
+    };
+
+    async function checkUserInChecklist() {
+
+        const playerId = getPlayerID();
+        const url = window.location.href;
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/check_user_in_checklsit`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ player_id: playerId, url })
+            });
+
+            if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+            const data = await response.json();
+
+            const dataDate = parseDateCheck(data.date);
+            const dateFromField = parseDateCheck(getDateFromField());
+            const currentDate = parseDateCheck(getCurrentDate());
+
+            const isCheckedToday = (dataDate && currentDate && dataDate.getTime() === currentDate.getTime()) ||
+                  (dateFromField && currentDate && dateFromField.getTime() === currentDate.getTime());
+
+            if (data.checklistExists && dataDate && (dateFromField <= dataDate || currentDate <= dataDate)) {
+                const alertDiv = document.createElement('div');
+                applyStyles(alertDiv, {
+                    backgroundColor: '#7fff00',
+                    color: '#000000',
+                    border: '1px solid #5a00a2',
+                    padding: '10px',
+                    margin: '10px 0'
+                });
+                alertDiv.className = 'alert alert-warning';
+                alertDiv.innerHTML = `
+                <strong>Користувач переглянутий.</strong>
+                <br><strong>Менеджер:</strong> ${data.manager_name}
+                <br><strong>Дата перегляду:</strong> ${formatDateToDDMMYYYY(dataDate)} в ${data.time}`;
+
+                const table = document.querySelector('.detail-view.table.table-striped');
+                if (table) {
+                    table.parentNode.insertBefore(alertDiv, table);
+                    console.log('Alert added to DOM');
+                } else {
+                    console.error('Таблиця не знайдена.');
+                    document.body.insertBefore(alertDiv, document.body.firstChild);
+                }
+            }
+
+            return { isCheckedToday };
+        } catch (error) {
+            console.error('Ошибка в checkUserInChecklist:', error);
+            return { isCheckedToday: false };
+        }
+    }
+
+    function createSettingsPopup() {
+        const settingsPopup = document.createElement('div');
+        settingsPopup.style.position = 'fixed';
+        settingsPopup.style.top = '10px';
+        settingsPopup.style.right = '10px';
+        settingsPopup.style.padding = '20px';
+        settingsPopup.style.backgroundColor = '#f9f9f9';
+        settingsPopup.style.border = '1px solid #ccc';
+        settingsPopup.style.boxShadow = '0px 0px 15px rgba(0, 0, 0, 0.2)';
+        settingsPopup.style.zIndex = '10001';
+        settingsPopup.style.fontFamily = 'Arial, sans-serif';
+        settingsPopup.style.fontSize = '14px';
+        settingsPopup.style.borderRadius = '8px';
+
+        const header = document.createElement('h2');
+        header.innerText = 'Налаштування';
+        header.style.fontWeight = 'bold';
+        header.style.fontSize = '18px';
+        header.style.marginBottom = '15px';
+        settingsPopup.appendChild(header);
+
+        const initialsDisplay = document.createElement('p');
+        const userInitials = GM_getValue(initialsKey, '');
+        initialsDisplay.innerText = `Ваші ініціали: ${userInitials}`;
+        initialsDisplay.style.marginBottom = '10px';
+        settingsPopup.appendChild(initialsDisplay);
+
+        const languageDisplay = document.createElement('p');
+        let currentLanguage = GM_getValue(languageKey, 'російська');
+        languageDisplay.innerText = `Встановлена мова: ${currentLanguage}`;
+        languageDisplay.style.marginBottom = '10px';
+        settingsPopup.appendChild(languageDisplay);
+
+        const shortcutKeyDisplay = document.createElement('p');
+        const savedShortcut = GM_getValue('dateShortcut', 'не задано');
+        shortcutKeyDisplay.innerText = `Вставка дати: ${savedShortcut}`;
+        shortcutKeyDisplay.style.marginBottom = '20px';
+        settingsPopup.appendChild(shortcutKeyDisplay);
+
+        const createCheckboxWithLabel = (labelText, isChecked, onChange) => {
+            const label = document.createElement('label');
+            label.style.display = 'block';
+            label.style.marginBottom = '10px';
+            label.style.cursor = 'pointer';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = isChecked;
+            checkbox.style.marginRight = '10px';
+            checkbox.addEventListener('change', onChange);
+
+            label.appendChild(checkbox);
+            label.appendChild(document.createTextNode(labelText));
+            return label;
+        };
+
+        settingsPopup.appendChild(
+            createCheckboxWithLabel('Показувати НДФЛ', GM_getValue(ndfDisplayKey, true), (e) => {
+                GM_setValue(ndfDisplayKey, e.target.checked);
+            })
+        );
+
+        settingsPopup.appendChild(
+            createCheckboxWithLabel('Округляти баланси', GM_getValue(amountDisplayKey, true), (e) => {
+                GM_setValue(amountDisplayKey, e.target.checked);
+            })
+        );
+        settingsPopup.appendChild(
+            createCheckboxWithLabel('Швидкий покрас карток', GM_getValue(fastPaintCardsDisplayKey, true), (e) => {
+                GM_setValue(fastPaintCardsDisplayKey, e.target.checked);
+            })
+        );
+        settingsPopup.appendChild(
+            createCheckboxWithLabel('Відображати повний номер карток у масках', GM_getValue(fullNumberCardDisplayKey, true), (e) => {
+                GM_setValue(fullNumberCardDisplayKey, e.target.checked);
+            })
+        );
+
+        if (managerData.status === 'Admin') {
+            settingsPopup.appendChild(
+                createCheckboxWithLabel('Відображати продуктивність', GM_getValue(progressBarDisplayKey, true), (e) => {
+                    GM_setValue(progressBarDisplayKey, e.target.checked);
+                })
+            );
+        }
+
+        const createButton = (text, bgColor, onClick) => {
+            const button = document.createElement('button');
+            button.innerText = text;
+            button.style.padding = '10px 20px';
+            button.style.backgroundColor = bgColor;
+            button.style.color = 'white';
+            button.style.border = 'none';
+            button.style.borderRadius = '4px';
+            button.style.cursor = 'pointer';
+            button.style.marginRight = '10px';
+            button.style.marginTop = '10px';
+            button.style.transition = 'background-color 0.3s';
+            button.addEventListener('click', onClick);
+            return button;
+        };
+
+        settingsPopup.appendChild(
+            createButton('Вказати ініціали', '#4CAF50', () => {
+                const userInitials = prompt('Введіть свої ініціали (наприклад, РМ):', GM_getValue(initialsKey, ''));
+                if (userInitials !== null) {
+                    GM_setValue(initialsKey, userInitials);
+                    initialsDisplay.innerText = `Ваші ініціали: ${userInitials}`;
+                }
+            })
+        );
+
+        const languageButton = createButton(`Змінити мову на ${currentLanguage === 'російська' ? 'українська' : 'російська'}`, '#2196F3', () => {
+            currentLanguage = currentLanguage === 'російська' ? 'українська' : 'російська';
+            GM_setValue(languageKey, currentLanguage);
+            languageDisplay.innerText = `Встановлена мова: ${currentLanguage}`;
+            languageButton.innerText = `Змінити мову на ${currentLanguage === 'російська' ? 'українська' : 'російська'}`;
+        });
+
+        settingsPopup.appendChild(languageButton);
+
+        settingsPopup.appendChild(
+            createButton('Змінити пароль', '#FF5722', () => {
+                const newPassword = prompt('Введіть новий пароль:');
+
+
+                if (newPassword) {
+                    fetch(`${API_BASE_URL}/api/change_password_by_user`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ password: newPassword }),
+                    })
+                        .then(response => {
+                        if (response.ok) {
+                            alert('Пароль успішно змінено');
+                        } else {
+                            alert('Сталася помилка при зміні пароля');
+                        }
+                    })
+                        .catch(error => {
+                        console.error('Помилка:', error);
+                        alert('Сталася помилка при зміні пароля');
+                    });
+                }
+            })
+        );
+
+        function getShortcutFromEvent(event) {
+            const keys = [];
+            if (event.ctrlKey) keys.push('CTRL');
+            if (event.altKey) keys.push('ALT');
+            if (event.shiftKey) keys.push('SHIFT');
+            keys.push(event.code);
+            return keys.join(' + ');
+        }
+
+        settingsPopup.appendChild(
+            createButton('Задати клавіші', '#FF9800', () => {
+                alert('Після натискання на "ОК" натисніть бажане поєднання клавіш');
+                document.addEventListener('keydown', function captureShortcut(event) {
+                    const shortcut = getShortcutFromEvent(event);
+                    GM_setValue('dateShortcut', shortcut);
+                    shortcutKeyDisplay.innerText = `Вставка дати: ${shortcut}`;
+                    document.removeEventListener('keydown', captureShortcut);
+                });
+            })
+        );
+
+        settingsPopup.appendChild(
+            createButton('Закрити', '#f44336', () => {
+                document.body.removeChild(settingsPopup);
+            })
+        );
+
+        document.body.appendChild(settingsPopup);
+    }
+
+
+
+   function calculatePendingAmount() {
+    const now = Date.now();
+    const periods = {
+        '30d': 30 * 24 * 60 * 60 * 1000,
+        '3m': 90 * 24 * 60 * 60 * 1000,
+        '6m': 180 * 24 * 60 * 60 * 1000,
+        'year': 365 * 24 * 60 * 60 * 1000
+    };
+
+    let activeAmount = 0;
+    let stats = {
+        '30d': { count: 0, sum: 0 },
+        '3m': { count: 0, sum: 0 },
+        '6m': { count: 0, sum: 0 },
+        'year': { count: 0, sum: 0 }
+    };
+
+    const rows = document.querySelectorAll('table.items tbody tr');
+    rows.forEach(row => {
+        const statusCell = row.querySelector('td:nth-child(2)');
+        const dateCell = row.querySelector('td:nth-child(8)');
+        const amountCell = row.querySelector('td:nth-child(5) code');
+
+        if (statusCell && amountCell) {
+            const status = statusCell.innerText.trim().toLowerCase();
+            const amount = parseFloat(amountCell.innerText.replace(/[^0-9.]/g, '')) || 0;
+
+            if (status.includes('pending') || status.includes('review') || status.includes('on_hold')) {
+                activeAmount += amount;
+            }
+
+            if (status.includes('closed') && dateCell) {
+                const dateParts = dateCell.innerText.trim().split(' ');
+                if (dateParts.length >= 1) {
+                    const [d, m, y] = dateParts[0].split('/');
+                    const timestamp = new Date(`${y}-${m}-${d}T${dateParts[1] || '00:00:00'}`).getTime();
+
+                    if (!isNaN(timestamp)) {
+                        const diff = now - timestamp;
+                        for (let key in periods) {
+                            if (diff <= periods[key]) {
+                                stats[key].count++;
+                                stats[key].sum += amount;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    let container = document.getElementById('mini-withdraw-stats');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'mini-withdraw-stats';
+        // Установлен top: 20px
+        container.style = `position: fixed; top: 20px; right: 20px; z-index: 10001; background-color: rgba(255, 255, 255, 0.9);
+                           backdrop-filter: blur(10px); color: rgb(26, 32, 44); border-radius: 12px; font-size: 14px;
+                           font-family: Inter, sans-serif; box-shadow: rgba(0, 0, 0, 0.1) 0px 10px 30px;
+                           border: 1px solid rgba(255, 255, 255, 0.5); min-width: 280px; overflow: hidden;`;
+        document.body.appendChild(container);
+
+        // --- ЛОГИКА ПЕРЕТАСКИВАНИЯ ---
+        let isDragging = false;
+        let offsetX, offsetY;
+
+        container.addEventListener('mousedown', (e) => {
+            // Разрешаем тянуть только за шапку (stats-header)
+            if (e.target.closest('#stats-header-withdraw')) {
+                isDragging = true;
+                offsetX = e.clientX - container.getBoundingClientRect().left;
+                offsetY = e.clientY - container.getBoundingClientRect().top;
+                container.style.cursor = 'grabbing';
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            container.style.left = (e.clientX - offsetX) + 'px';
+            container.style.top = (e.clientY - offsetY) + 'px';
+            container.style.right = 'auto'; // Отключаем фиксацию справа при движении
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            if (container) container.style.cursor = 'default';
+        });
+    }
+
+    const updateView = (periodKey) => {
+        const data = stats[periodKey];
+        const avg = data.count > 0 ? (data.sum / data.count).toFixed(2) : "0.00";
+
+        // Внутренняя разметка (Header получил ID для захвата мышкой)
+        container.innerHTML = `
+            <div id="stats-header-withdraw" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 18px; border-bottom: 1px solid rgba(0,0,0,0.05); cursor: move; user-select: none;">
+                <b style="font-size: 13px; color: #2d3748;">Статистика виплат (Closed)</b>
+                <div style="font-size: 18px; color: #64748b; font-weight: bold;">−</div>
+            </div>
+            <div style="display: flex; gap: 4px; padding: 8px 12px; background: #f0f0f0;">
+                ${Object.keys(periods).map(key => {
+                    const label = key === '30d' ? '30 днів' : key === '3m' ? '3 міс' : key === '6m' ? '6 міс' : 'Рік';
+                    const isActive = key === periodKey;
+                    return `<button class="withdraw-period-btn" data-key="${key}" style="padding: 5px 10px; cursor: pointer; border: none;
+                            background: ${isActive ? '#fff' : 'transparent'}; color: ${isActive ? '#3498db' : '#7f8c8d'};
+                            font-weight: ${isActive ? 'bold' : 'normal'}; border-radius: 6px; font-size: 12px; transition: 0.2s;
+                            box-shadow: ${isActive ? 'rgba(0, 0, 0, 0.1) 0px 2px 5px' : 'none'};">${label}</button>`;
+                }).join('')}
+            </div>
+            <div style="padding: 18px 24px; display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; justify-content: space-between; color: #e67e22; font-weight: bold; margin-bottom: 5px; padding-bottom: 5px; border-bottom: 1px solid #f0f0f0;">
+                    <span>Активні (Pend):</span>
+                    <span>${activeAmount.toLocaleString('ru-RU')}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: #64748b;">Кількість:</span>
+                    <span style="font-weight: 600;">${data.count}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: #64748b;">Загальна сума:</span>
+                    <span style="font-weight: 600;">${data.sum.toLocaleString('ru-RU')}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 10px; border-top: 2px solid rgba(0,0,0,0.03);">
+                    <span style="color: #1e293b; font-weight: bold;">AVG:</span>
+                    <span style="font-weight: 800; color: #16a34a; font-size: 18px;">${avg}</span>
+                </div>
+            </div>
+        `;
+
+        container.querySelectorAll('.withdraw-period-btn').forEach(btn => {
+            btn.onclick = () => updateView(btn.getAttribute('data-key'));
+        });
+    };
+
+    updateView('30d');
+}
+
+    function calculatePendingAmountUSA() {
+        let totalPending = 0;
+
+        const rows = document.querySelectorAll('tr');
+        rows.forEach(row => {
+            const statusSpan = row.querySelector('span.label');
+            if (statusSpan && (statusSpan.textContent.trim() === 'pending' || statusSpan.textContent.trim() === 'review' || statusSpan.textContent.trim() === 'on_hold')) {
+                const amountCode = row.querySelector('td:nth-child(6) code');
+                if (amountCode) {
+                    const amountText = amountCode.textContent.trim().replace('USD', '').trim();
+                    const amount = parseFloat(amountText.replace(',', '.'));
+                    if (!isNaN(amount)) {
+                        totalPending += amount;
+                    }
+                }
+            }
+        });
+
+        const popupBoxWithDraw = document.createElement('div');
+        popupBoxWithDraw.style.position = 'fixed';
+        popupBoxWithDraw.style.top = '10px';
+        popupBoxWithDraw.style.right = '10px';
+        popupBoxWithDraw.style.padding = '10px';
+        popupBoxWithDraw.style.backgroundColor = 'white';
+        popupBoxWithDraw.style.border = '2px solid black';
+        popupBoxWithDraw.style.boxShadow = '0px 0px 10px rgba(0, 0, 0, 0.5)';
+        popupBoxWithDraw.style.zIndex = '10000';
+        popupBoxWithDraw.style.fontFamily = 'Arial, sans-serif';
+        popupBoxWithDraw.style.fontSize = '16px';
+        popupBoxWithDraw.style.display = 'flex';
+        popupBoxWithDraw.style.flexDirection = 'column';
+        popupBoxWithDraw.style.alignItems = 'center';
+        popupBoxWithDraw.style.borderRadius = '10px';
+
+        const text = document.createElement('div');
+        text.innerHTML = `<center><b>Сума pending: ${totalPending.toFixed(2)}$</b></center>`;
+        popupBoxWithDraw.appendChild(text);
+
+        document.body.appendChild(popupBoxWithDraw);
+    }
+
+    function calculatePendingAmountWildWinz() {
+        let totalPendingCAD = 0;
+        let totalPendingEUR = 0;
+        let totalPendingPLN = 0;
+
+        const rows = document.querySelectorAll('tr');
+        rows.forEach(row => {
+            const statusSpan = row.querySelector('span.label');
+            if (statusSpan && (statusSpan.textContent.trim() === 'pending' || statusSpan.textContent.trim() === 'review' || statusSpan.textContent.trim() === 'on_hold')) {
+                const amountCode = row.querySelector('td:nth-child(6) code');
+                console.log(amountCode)
+                if (amountCode) {
+                    const amountText = amountCode.textContent.trim();
+                    const amount = parseFloat(amountText.replace(',', '.').replace(/[^\d.-]/g, ''));
+                    if (!isNaN(amount)) {
+                        if (amountText.includes('CAD')) {
+                            totalPendingCAD += amount;
+                        } else if (amountText.includes('EUR')) {
+                            totalPendingEUR += amount;
+                        } else if (amountText.includes('PLN')) {
+                            totalPendingPLN += amount;
+                        }
+                    }
+                }
+            }
+        });
+
+        const popupBoxWithDraw = document.createElement('div');
+        popupBoxWithDraw.style.position = 'fixed';
+        popupBoxWithDraw.style.top = '10px';
+        popupBoxWithDraw.style.right = '10px';
+        popupBoxWithDraw.style.padding = '10px';
+        popupBoxWithDraw.style.backgroundColor = 'white';
+        popupBoxWithDraw.style.border = '2px solid black';
+        popupBoxWithDraw.style.boxShadow = '0px 0px 10px rgba(0, 0, 0, 0.5)';
+        popupBoxWithDraw.style.zIndex = '10000';
+        popupBoxWithDraw.style.fontFamily = 'Arial, sans-serif';
+        popupBoxWithDraw.style.fontSize = '16px';
+        popupBoxWithDraw.style.display = 'flex';
+        popupBoxWithDraw.style.flexDirection = 'column';
+        popupBoxWithDraw.style.alignItems = 'center';
+        popupBoxWithDraw.style.borderRadius = '10px';
+
+        const textCAD = document.createElement('div');
+        textCAD.innerHTML = `<center><b>Сума pending CAD: ${totalPendingCAD.toFixed(2)}$</b></center>`;
+        popupBoxWithDraw.appendChild(textCAD);
+
+        const textEUR = document.createElement('div');
+        textEUR.innerHTML = `<center><b>Сума pending EUR: ${totalPendingEUR.toFixed(2)}€</b></center>`;
+        popupBoxWithDraw.appendChild(textEUR);
+
+        const textPLN = document.createElement('div');
+        textPLN.innerHTML = `<center><b>Сума pending PLN: ${totalPendingPLN.toFixed(2)}zł</b></center>`;
+        popupBoxWithDraw.appendChild(textPLN);
+
+        document.body.appendChild(popupBoxWithDraw);
+    }
+
+    function createPopup(id, headerText, content, onClose) {
+        if (document.getElementById(id)) {
+            return;
+        }
+
+        const popup = document.createElement('div');
+        popup.id = id;
+        popup.className = 'custom-popup';
+        popup.innerHTML = `
+        <div class="popup-header">
+            ${headerText}
+            <span class="close-btn">&times;</span>
+        </div>
+        <div class="popup-content">
+            ${content}
+        </div>
+        <div class="popup-resize-handle"></div>
+    `;
+        document.body.appendChild(popup);
+
+        enableResize(popup);
+
+        popup.querySelector('.close-btn').addEventListener('click', () => {
+            popup.remove();
+            if (onClose) onClose();
+        });
+
+        dragElement(popup);
+    }
+
+    function enableResize(popup) {
+        const resizeHandle = popup.querySelector('.popup-resize-handle');
+
+        let startX, startY, startWidth, startHeight;
+
+        resizeHandle.addEventListener('mousedown', (e) => {
+            startX = e.clientX;
+            startY = e.clientY;
+            startWidth = parseInt(document.defaultView.getComputedStyle(popup).width, 10);
+            startHeight = parseInt(document.defaultView.getComputedStyle(popup).height, 10);
+            document.documentElement.addEventListener('mousemove', resizePopup, false);
+            document.documentElement.addEventListener('mouseup', stopResizePopup, false);
+        });
+
+        function resizePopup(e) {
+            popup.style.width = (startWidth + e.clientX - startX) + 'px';
+            popup.style.height = (startHeight + e.clientY - startY) + 'px';
+        }
+
+        function stopResizePopup() {
+            document.documentElement.removeEventListener('mousemove', resizePopup, false);
+            document.documentElement.removeEventListener('mouseup', stopResizePopup, false);
+        }
+    }
+
+    function createAdminPopup() {
+        const adminTeam = (managerData && managerData.team) ? managerData.team : 'All';
+
+        const content = `
+    <div class="team-tabs" style="margin-bottom: 15px; display: flex; gap: 5px; flex-wrap: wrap;">
+        ${TEAMS.map(team => `
+            <button class="team-tab-btn ${team === adminTeam ? 'active' : ''}"
+                    data-team="${team}"
+                    style="padding: 8px 15px; cursor: pointer; border: 1px solid #ccc; border-radius: 4px;
+                           background: ${team === adminTeam ? '#3498db' : '#fff'};
+                           color: ${team === adminTeam ? '#fff' : '#000'};
+                           transition: all 0.2s;">
+                ${team === '' ? 'Усі' : team}
+            </button>
+        `).join('')}
+    </div>
+    <table id="admin-popup-table">
+        <thead>
+            <tr>
+                <th>Ім'я</th>
+                <th>Статус</th>
+                <th><i class="fa fa-user" title='Кількість опрацьованих'></i></th>
+                <th><i class="fa fa-eye" title='Кількість переглянуитих'></i></th>
+                <th><center><i class="fa fa-chrome" title='Остання вкладка'></i></center></th>
+                <th class="actions">Дії</th>
+            </tr>
+        </thead>
+        <tbody id="users-list"></tbody>
+    </table>
+    <div style="margin-top: 15px; display: flex; gap: 10px;">
+        <button id="add-user-btn">Додати користувача</button>
+        <button id="alerts-settings-btn">Налаштування Alerts</button>
+    </div>
+    `;
+
+        createPopup('admin-popup', 'Менеджери', content, () => {});
+
+        loadUsers(adminTeam);
+
+        document.querySelectorAll('.team-tab-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const selectedTeam = e.target.getAttribute('data-team');
+
+                document.querySelectorAll('.team-tab-btn').forEach(b => {
+                    b.style.background = '#fff';
+                    b.style.color = '#000';
+                    b.classList.remove('active');
+                });
+
+                e.target.style.background = '#3498db';
+                e.target.style.color = '#fff';
+                e.target.classList.add('active');
+
+                loadUsers(selectedTeam);
+            });
+        });
+
+        document.getElementById('add-user-btn').onclick = createRegisterPopup;
+        document.getElementById('alerts-settings-btn').onclick = createAlertSettingsPopup;
+    }
+
+    function loadQuillResources() {
+        const quillCSS = document.createElement('link');
+        quillCSS.href = 'https://cdn.quilljs.com/1.3.6/quill.snow.css';
+        quillCSS.rel = 'stylesheet';
+        document.head.appendChild(quillCSS);
+
+        const quillJS = document.createElement('script');
+        quillJS.src = 'https://cdn.quilljs.com/1.3.6/quill.js';
+        document.head.appendChild(quillJS);
+
+        return new Promise((resolve) => {
+            quillJS.onload = resolve;
+        });
+    }
+
+    async function createReminderPopup() {
+        const status = managerData.status;
+
+        fetchArticles().then(articles => {
+            let lastSeenArticleId = GM_getValue(lastSeenArticleIdKey);
+
+            if (!lastSeenArticleId && articles.length > 0) {
+                const lastArticle = articles[articles.length - 1];
+                GM_setValue(lastSeenArticleIdKey, lastArticle.id);
+                lastSeenArticleId = lastArticle.id;
+            }
+            let content = `
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; }
+            .highlight-red { color: red; }
+            .highlight-blue { color: blue; }
+            .highlight-green { color: green; }
+            .highlight-orange { color: orange; }
+            ul { list-style-type: disc; margin-left: 20px; }
+
+            .add-article-btn {
+                background-color: #4CAF50;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                cursor: pointer;
+                font-size: 16px;
+                border-radius: 5px;
+                margin: 5px 0;
+                transition: background-color 0.3s ease;
+            }
+            .add-article-btn:hover {
+                background-color: #45a049;
+            }
+
+            .save-article-btn {
+                background-color: #2196F3;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                cursor: pointer;
+                font-size: 16px;
+                border-radius: 5px;
+                margin: 5px 0;
+                transition: background-color 0.3s ease;
+            }
+            .save-article-btn:hover {
+                background-color: #1976D2;
+            }
+
+            .edit-article-btn {
+                background-color: #FF9800;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                cursor: pointer;
+                font-size: 16px;
+                border-radius: 5px;
+                margin: 5px 0;
+                transition: background-color 0.3s ease;
+            }
+            .edit-article-btn:hover {
+                background-color: #FB8C00;
+            }
+
+            .delete-article-btn {
+                background-color: #F44336;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                cursor: pointer;
+                font-size: 16px;
+                border-radius: 5px;
+                margin: 5px 0;
+                transition: background-color 0.3s ease;
+            }
+            .delete-article-btn:hover {
+                background-color: #E53935;
+            }
+
+            input[type="text"] {
+                width: 100%;
+                padding: 10px;
+                margin: 5px 0 20px 0;
+                display: inline-block;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                box-sizing: border-box;
+                font-size: 16px;
+            }
+
+            #quill-editor {
+                height: 300px;
+                margin-bottom: 20px;
+            }
+
+            .article-container {
+                margin-bottom: 20px;
+                max-width: 1650px;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+            }
+        </style>
+        `;
+
+            if (status === 'Admin') {
+                content += `<button class="add-article-btn" id="add-article-btn">Додати новину</button>`;
+            }
+
+            articles.forEach(article => {
+                content += `
+            <div class="article-container" data-id="${article.id}">
+                <h3>${article.title}</h3>
+                <div>${article.content}</div>
+                ${status === 'Admin' ? `
+                    <button class="edit-article-btn">Редагувати</button>
+                    <button class="delete-article-btn">Видалити</button>
+                ` : ''}
+            </div>
+            `;
+            });
+
+            createPopup('reminder', 'Новини', content, () => {});
+
+            if (status === 'Admin') {
+                document.getElementById('add-article-btn').addEventListener('click', () => {
+                    openArticleEditor();
+                });
+
+                document.querySelectorAll('.edit-article-btn').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const articleId = e.target.closest('.article-container').dataset.id;
+                        openArticleEditor(articleId);
+                    });
+                });
+
+                document.querySelectorAll('.delete-article-btn').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const articleId = e.target.closest('.article-container').dataset.id;
+                        deleteArticle(articleId).then(() => {
+                            Swal.fire('Видалено!', '', 'success');
+                            closePopup('reminder');
+                            createReminderPopup();
+                        });
+                    });
+                });
+            }
+        });
+    }
+
+    function openArticleEditor(articleId = null) {
+        let title = '';
+        let content = '';
+
+        if (articleId) {
+            fetch(`${API_BASE_URL}/get_article/${articleId}`)
+                .then(response => response.json())
+                .then(article => {
+                title = article.title;
+                content = article.content;
+                showEditorPopup(title, content, articleId);
+            });
+        } else {
+            showEditorPopup(title, content);
+        }
+    }
+
+    function showEditorPopup(title, content, articleId = null) {
+        const editorContent = `
+        <h3>Редагування</h3>
+        <input type="text" id="article-title" value="${title}" placeholder="Заголовок" />
+        <div id="quill-editor"></div>
+        <button class="save-article-btn" id="save-article-btn">Зберегти</button>
+    `;
+        createPopup('editor', 'Редагування', editorContent, () => {});
+
+        loadQuillResources().then(() => {
+            const quill = new Quill('#quill-editor', {
+                theme: 'snow',
+                modules: {
+                    toolbar: [
+                        [{ 'header': [1, 2, false] }],
+                        ['bold', 'italic', 'underline', 'strike'],
+                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                        [{ 'color': [] }, { 'background': [] }],
+                        ['clean']
+                    ]
+                }
+            });
+
+            if (content) {
+                quill.clipboard.dangerouslyPasteHTML(content);
+            }
+
+            document.getElementById('save-article-btn').addEventListener('click', () => {
+                const newTitle = document.getElementById('article-title').value;
+                const newContent = quill.root.innerHTML;
+
+                if (articleId) {
+                    updateArticle(articleId, newTitle, newContent).then(() => {
+                        closePopup('editor');
+                        Swal.fire('Збережено!', '', 'success');
+                        closePopup('reminder');
+                        createReminderPopup();
+                    });
+                } else {
+                    saveArticle(newTitle, newContent).then(() => {
+                        closePopup('editor');
+                        Swal.fire('Додано!', '', 'success');
+                        closePopup('reminder');
+                        createReminderPopup();
+                    });
+                }
+            });
+        });
+    }
+
+    async function fetchArticles() {
+        const response = await fetch(`${API_BASE_URL}/get_articles`);
+        const data = await response.json();
+        return data;
+    }
+
+    async function saveArticle(title, content) {
+        const response = await fetch(`${API_BASE_URL}/save_article`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                title: title,
+                content: content
+            })
+        });
+        const data = await response.json();
+        return data;
+    }
+
+    async function updateArticle(articleId, title, content) {
+        const response = await fetch(`${API_BASE_URL}/update_article/${articleId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                title: title,
+                content: content
+            })
+        });
+        const data = await response.json();
+        return data;
+    }
+
+    async function deleteArticle(articleId) {
+        const response = await fetch(`${API_BASE_URL}/delete_article/${articleId}`, {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+        const lastSeenArticleId = GM_getValue(lastSeenArticleIdKey);
+        GM_setValue(lastSeenArticleIdKey, lastSeenArticleId - 1);
+        return data;
+    }
+
+    function closePopup(popupId) {
+        const popup = document.getElementById(popupId);
+        if (popup) {
+            popup.remove();
+        }
+    }
+
+    function createFindPopUp() {
+        const popupId = 'findPopup';
+
+        const content = `
+    <div class="search-container">
+        <div class="input-group">
+            <input type="text" id="searchSurnameInput" placeholder="Прізвище або ПІБ" class="search-input">
+            <input type="text" id="searchIdInput" placeholder="ID гравця" class="search-input">
+            <input type="text" id="searchPhoneInput" placeholder="Номер телефону" class="search-input">
+            <input type="text" id="searchInnInput" placeholder="ІПН" class="search-input">
+            <input type="text" id="searchEmailInput" placeholder="Пошта" class="search-input">
+            <input type="text" id="searchNicknameInput" placeholder="Нікнейм" class="search-input">
+        </div>
+        <div class="button-group">
+            <button id="searchBetkingBtn">Betking</button>
+            <button id="searchVegasBtn">Vegas</button>
+            <button id="search777Btn">777</button>
+        </div>
+        <div id="searchResults" class="search-results"></div>
+    </div>
+    `;
+
+        const style = document.createElement('style');
+        style.id = 'findPopupStyles';
+        style.textContent = `
+    .find-popup .search-container {
+        padding: 15px;
+    }
+    .find-popup .input-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 15px;
+    }
+    .find-popup .search-input {
+        flex: 1 1 30%;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-size: 14px;
+        min-width: 200px;
+    }
+    .find-popup .button-group {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        margin-bottom: 15px;
+    }
+    .find-popup .search-container button {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 25px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .find-popup .search-container button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+    .find-popup .search-container button:active {
+        transform: translateY(0);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+    .find-popup #searchBetkingBtn {
+        background-color: #e63946;
+        color: #ffd60a;
+    }
+    .find-popup #searchVegasBtn {
+        background-color: #48cae4;
+        color: #d00000;
+    }
+    .find-popup #search777Btn {
+        background-color: #1d1d1d;
+        color: #d00000;
+    }
+    .find-popup .search-results {
+        margin-top: 10px;
+        overflow-x: auto;
+        overflow-y: auto;
+        max-height: 550px;
+    }
+    .find-popup.custom-popup {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        border: 1px solid #ccc;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        min-width: 300px;
+        min-height: 200px;
+    }
+    .find-popup .items.table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .find-popup .items.table th, .find-popup .items.table td {
+        padding: 8px;
+        border: 1px solid #ddd;
+    }
+    .find-popup .popup-header {
+        padding: 5px 10px;
+        background: #f0f0f0;
+        cursor: move;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .find-popup .close-btn {
+        cursor: pointer;
+        font-size: 20px;
+    }
+    .find-popup .popup-content {
+        padding: 10px;
+    }
+    .find-popup .popup-resize-handle {
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        width: 10px;
+        height: 10px;
+        background: #ccc;
+        cursor: se-resize;
+    }
+    `;
+        document.head.appendChild(style);
+
+        createPopup(popupId, 'Швидкий пошук', content);
+
+        const popup = document.getElementById(popupId);
+        popup.classList.add('find-popup');
+
+        const searchSurnameInput = document.getElementById('searchSurnameInput');
+        const searchIdInput = document.getElementById('searchIdInput');
+        const searchPhoneInput = document.getElementById('searchPhoneInput');
+        const searchInnInput = document.getElementById('searchInnInput');
+        const searchEmailInput = document.getElementById('searchEmailInput');
+        const searchNicknameInput = document.getElementById('searchNicknameInput');
+        const searchBetkingBtn = document.getElementById('searchBetkingBtn');
+        const searchVegasBtn = document.getElementById('searchVegasBtn');
+        const search777Btn = document.getElementById('search777Btn');
+        const searchResults = document.getElementById('searchResults');
+        const ProjectUrl = {
+            '777.ua': 'https://admin.777.ua/',
+            'vegas.ua': 'https://admin.vegas.ua/',
+            'wildwinz.com': 'https://admin.wildwinz.com/',
+            'com.ua': 'https://admin.betking.com.ua/',
+        }[window.location.hostname.split('.').slice(-2).join('.')] || 'https://admin.default.ua/';
+
+        searchBetkingBtn.addEventListener('click', () => performSearch('betking'));
+        searchVegasBtn.addEventListener('click', () => performSearch('vegas'));
+        search777Btn.addEventListener('click', () => performSearch('777'));
+
+        searchSurnameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const project = window.location.hostname.includes('777.ua') ? '777' :
+                window.location.hostname.includes('vegas.ua') ? 'vegas' :
+                'betking';
+                performSearch(project);
+            }
+        });
+
+        function decodeEmail(encoded) {
+            if (!encoded) return '';
+            const key = parseInt(encoded.substr(0, 2), 16);
+            let email = '';
+            for (let i = 2; i < encoded.length; i += 2) {
+                const byte = parseInt(encoded.substr(i, 2), 16);
+                email += String.fromCharCode(byte ^ key);
+            }
+            return email;
+        }
+
+        function decodeEmails(table) {
+            const emailCells = table.querySelectorAll('td:nth-child(2)');
+            emailCells.forEach(cell => {
+                const emailLink = cell.querySelector('a.__cf_email__[data-cfemail]');
+                if (emailLink) {
+                    const encoded = emailLink.getAttribute('data-cfemail');
+                    const decoded = decodeEmail(encoded);
+                    cell.textContent = decoded;
+                }
+            });
+        }
+
+        function setLinksTargetBlank(table, projectUrl) {
+            const links = table.querySelectorAll('td:nth-child(1) a');
+            links.forEach(link => {
+                const relativeHref = link.getAttribute('href');
+                if (relativeHref) {
+                    const absoluteUrl = `${projectUrl}${relativeHref.startsWith('/') ? relativeHref.slice(1) : relativeHref}`;
+                    link.setAttribute('href', absoluteUrl);
+                    link.setAttribute('target', '_blank');
+                    console.log('Updated link:', link.href);
+                }
+            });
+        }
+
+        function performSearch(project) {
+            const surnameTerm = searchSurnameInput.value.trim();
+            const idTerm = searchIdInput.value.trim();
+            const phoneTerm = searchPhoneInput.value.trim();
+            const innTerm = searchInnInput.value.trim();
+            const emailTerm = searchEmailInput.value.trim();
+            const nicknameTerm = searchNicknameInput.value.trim();
+
+            if (!surnameTerm && !idTerm && !phoneTerm && !innTerm && !emailTerm && !nicknameTerm) {
+                searchResults.innerHTML = '<p>Введіть дані для пошуку в хоча б одне поле</p>';
+                return;
+            }
+
+            popup.style.top = '50%';
+            popup.style.left = '50%';
+            popup.style.transform = 'translate(-50%, -50%)';
+
+            const terms = surnameTerm.split(' ').filter(Boolean);
+            let bodyData = '';
+
+            const projectUrls = {
+                'betking': 'https://admin.betking.com.ua/',
+                'vegas': 'https://admin.vegas.ua/',
+                '777': 'https://admin.777.ua/'
+            };
+            const projectUrl = projectUrls[project];
+            if (!projectUrl) {
+                console.error(`Не удалось определить projectUrl для проекта ${project}`);
+                searchResults.innerHTML = '<p>Помилка: не вдалося визначити домен проекту</p>';
+                return;
+            }
+            const searchUrl = `${projectUrl}players/playersItems/search/`;
+
+            if (surnameTerm) {
+                bodyData += `PlayersSearchForm[surname]=${encodeURIComponent(terms[0])}`;
+            }
+            if (idTerm) {
+                bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[number]=${encodeURIComponent(idTerm)}`;
+            }
+            if (phoneTerm) {
+                bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[phone]=${encodeURIComponent(phoneTerm)}`;
+            }
+            if (innTerm) {
+                bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[inn]=${encodeURIComponent(innTerm)}`;
+            }
+            if (emailTerm) {
+                bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[email]=${encodeURIComponent(emailTerm)}`;
+            }
+            if (nicknameTerm) {
+                bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[nickname]=${encodeURIComponent(nicknameTerm)}`;
+            }
+            bodyData += `${bodyData ? '&' : ''}PlayersSearchForm[document]=&yt0=`;
+
+            console.log('Sending search request with body:', bodyData, 'to URL:', searchUrl);
+
+            searchResults.innerHTML = '<p>Завантаження...</p>';
+
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: searchUrl,
+                headers: {
+                    'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                    'content-type': 'application/x-www-form-urlencoded',
+                    'cache-control': 'no-cache',
+                    'pragma': 'no-cache'
+                },
+                data: bodyData,
+                onload: function(response) {
+                    const finalUrl = response.finalUrl || searchUrl;
+                    const html = response.responseText;
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+
+                    console.log('Search response URL:', finalUrl);
+
+                    if (finalUrl.includes('/players/playersItems/update/')) {
+                        const playerId = finalUrl.split('/').filter(Boolean).pop();
+                        const profileUrl = `${projectUrl}players/playersItems/update/${playerId}/`;
+                        console.log('Fetching profile URL for validation:', profileUrl);
+
+                        GM_xmlhttpRequest({
+                            method: 'GET',
+                            url: profileUrl,
+                            headers: {
+                                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                                'cache-control': 'no-cache',
+                                'pragma': 'no-cache'
+                            },
+                            onload: function(profileResponse) {
+                                const profileHtml = profileResponse.responseText;
+                                const parser = new DOMParser();
+                                const profileDoc = parser.parseFromString(profileHtml, 'text/html');
+
+                                const rows = profileDoc.querySelectorAll('table tr');
+                                let profileData = {};
+
+                                rows.forEach(row => {
+                                    const th = row.querySelector('th')?.textContent.trim().toLowerCase();
+                                    const td = row.querySelector('td')?.textContent.trim();
+                                    if (th && td) {
+                                        if (th === 'фамилия') profileData.surname = td.toLowerCase();
+                                        if (th === 'middle name') profileData.patronymic = td.toLowerCase();
+                                        if (th === 'имя') profileData.name = td.toLowerCase();
+                                    }
+                                });
+
+                                const terms = surnameTerm ? surnameTerm.split(' ').filter(Boolean).map(t => t.toLowerCase()) : [];
+                                const inputData = {
+                                    surname: terms[0] || '',
+                                    name: terms.length >= 2 ? terms[1] : '',
+                                    patronymic: terms.length === 3 ? terms[2] : ''
+                                };
+
+                                let dataMatches = true;
+
+                                if (surnameTerm) {
+                                    if (terms.length === 1 && profileData.surname !== inputData.surname) {
+                                        dataMatches = false;
+                                    }
+                                    if (terms.length === 2 &&
+                                        (profileData.surname !== inputData.surname ||
+                                         profileData.name !== inputData.name)) {
+                                        dataMatches = false;
+                                    }
+                                    if (terms.length === 3 &&
+                                        (profileData.surname !== inputData.surname ||
+                                         profileData.name !== inputData.name ||
+                                         profileData.patronymic !== inputData.patronymic)) {
+                                        dataMatches = false;
+                                    }
+                                }
+
+                                console.log('Profile data:', profileData);
+                                console.log('Input data:', inputData);
+                                console.log('Data matches:', dataMatches);
+
+                                if (dataMatches) {
+                                    console.log('Opening profile URL:', profileUrl);
+                                    window.open(profileUrl, '_blank');
+                                } else {
+                                    searchResults.innerHTML = '<p>Нічого не знайдено: дані профілю не співпадають з введеними</p>';
+                                    setFixedPopupSize(popup);
+                                }
+                            },
+                            onerror: function(error) {
+                                searchResults.innerHTML = `<p>Помилка при завантаженні профілю: ${error.responseText || error}</p>`;
+                                console.error('Profile fetch error:', error);
+                                setFixedPopupSize(popup);
+                            }
+                        });
+                        return;
+                    }
+
+                    const table = doc.querySelector('.items.table');
+                    if (table) {
+                        let rows = table.querySelectorAll('tbody tr');
+
+                        let filteredRows;
+                        if (surnameTerm) {
+                            if (terms.length === 2) {
+                                const surname = terms[0].toLowerCase();
+                                const name = terms[1].toLowerCase();
+
+                                filteredRows = Array.from(rows).filter(row => {
+                                    const surnameCell = row.cells[6]?.textContent.trim().toLowerCase() || '';
+                                    const nameCell = row.cells[4]?.textContent.trim().toLowerCase() || '';
+
+                                    const matchesSurname = surnameCell === surname;
+                                    const matchesName = nameCell === name;
+
+                                    console.log('Row data (surname + name):', { surnameCell, nameCell, matchesSurname, matchesName });
+
+                                    return matchesSurname && matchesName;
+                                });
+
+                                if (filteredRows.length === 0) {
+                                    searchResults.innerHTML = '<p>Нічого не знайдено за прізвищем та ім\'ям</p>';
+                                    setFixedPopupSize(popup);
+                                    return;
+                                }
+                            } else if (terms.length === 3) {
+                                const surname = terms[0].toLowerCase();
+                                const name = terms[1].toLowerCase();
+                                const patronymic = terms[2].toLowerCase();
+
+                                filteredRows = Array.from(rows).filter(row => {
+                                    const surnameCell = row.cells[6]?.textContent.trim().toLowerCase() || '';
+                                    const nameCell = row.cells[4]?.textContent.trim().toLowerCase() || '';
+                                    const patronymicCell = row.cells[5]?.textContent.trim().toLowerCase() || '';
+
+                                    const matchesSurname = surnameCell === surname;
+                                    const matchesName = nameCell === name;
+                                    const matchesPatronymic = patronymicCell === patronymic;
+
+                                    console.log('Row data (full PIB):', { surnameCell, nameCell, patronymicCell, matchesSurname, matchesName, matchesPatronymic });
+
+                                    return matchesSurname && matchesName && matchesPatronymic;
+                                });
+
+                                if (filteredRows.length === 0) {
+                                    searchResults.innerHTML = '<p>Нічого не знайдено за повним ПІБ</p>';
+                                    setFixedPopupSize(popup);
+                                    return;
+                                }
+                            } else {
+                                filteredRows = Array.from(rows);
+                            }
+                        } else {
+                            filteredRows = Array.from(rows);
+                        }
+
+                        const newTable = document.createElement('table');
+                        newTable.className = 'items table table-striped table-hover';
+                        newTable.appendChild(table.querySelector('thead').cloneNode(true));
+                        const newTbody = document.createElement('tbody');
+                        filteredRows.forEach(row => newTbody.appendChild(row.cloneNode(true)));
+                        newTable.appendChild(newTbody);
+
+                        decodeEmails(newTable);
+                        setLinksTargetBlank(newTable, projectUrl);
+
+                        searchResults.innerHTML = '';
+                        if (filteredRows.length > 0) {
+                            searchResults.appendChild(newTable);
+                            setFixedPopupSize(popup);
+                        } else {
+                            searchResults.innerHTML = '<p>Нічого не знайдено</p>';
+                            setFixedPopupSize(popup);
+                        }
+                    } else {
+                        searchResults.innerHTML = '<p>Нічого не знайдено</p>';
+                        setFixedPopupSize(popup);
+                    }
+                },
+                onerror: function(error) {
+                    searchResults.innerHTML = `<p>Помилка: ${error.responseText || error}</p>`;
+                    console.error('Search error:', error);
+                    setFixedPopupSize(popup);
+                }
+            });
+        }
+
+        function setFixedPopupSize(popup) {
+            popup.style.width = '1477px';
+            popup.style.height = '700px';
+
+            const maxWidth = window.innerWidth;
+            const maxHeight = window.innerHeight;
+            const popupRect = popup.getBoundingClientRect();
+
+            if (popupRect.right > maxWidth) {
+                popup.style.left = `${maxWidth - 1477}px`;
+            }
+            if (popupRect.bottom > maxHeight) {
+                popup.style.top = `${maxHeight - 700}px`;
+            }
+            if (popupRect.left < 0) {
+                popup.style.left = '0px';
+            }
+            if (popupRect.top < 0) {
+                popup.style.top = '0px';
+            }
+        }
+    }
+
+    function createRegisterPopup() {
+        const teamOptions = TEAMS.map(t => `<option value="${t}">${t}</option>`).join('');
+
+        const content = `
+    <div style="display: flex; flex-direction: column; gap: 10px; min-width: 300px;">
+        <div>
+            <label style="font-size: 12px; font-weight: bold; color: #444;">Авторизація</label>
+            <input type="text" id="register-username" placeholder="Логін" required style="width: 100%; margin-top: 5px;"/>
+            <input type="password" id="register-password" placeholder="Пароль" required style="width: 100%; margin-top: 5px;"/>
+        </div>
+
+        <div>
+            <label style="font-size: 12px; font-weight: bold; color: #444;">Основна інформація</label>
+            <input type="text" id="manager-name" placeholder="Ім'я Фамілія" required style="width: 100%; margin-top: 5px;"/>
+
+            <select id="user-status" required style="width: 100%; margin-top: 5px;">
+                <option value="" disabled selected>Виберіть статус</option>
+                <option value="Manager">Менеджер</option>
+                <option value="Admin">Admin</option>
+            </select>
+        </div>
+
+        <div>
+            <label style="font-size: 12px; font-weight: bold; color: #444;">Команда</label>
+            <select id="user-team" style="width: 100%; margin-top: 5px;">
+                ${teamOptions}
+            </select>
+        </div>
+
+        <div style="display: flex; gap: 15px;">
+            <div style="flex: 1;">
+                <label style="font-size: 11px; color: #666;">Робочих годин:</label>
+                <input type="number" id="user-work-hours" value="8" min="1" max="24" style="width: 100%;"/>
+            </div>
+            <div style="flex: 1;">
+                <label style="font-size: 11px; color: #666;">Норма в годину:</label>
+                <input type="number" id="user-hour-goal" value="50" min="1" style="width: 100%;"/>
+            </div>
+        </div>
+
+        <button id="register-btn" style="margin-top: 10px;">Додати користувача</button>
+        <div class="error" id="register-error-msg"></div>
+        <div class="success" id="register-success-msg"></div>
+    </div>
+    `;
+
+        createPopup('register-popup', 'Реєстрація нового співробітника', content, () => {});
+
+        document.getElementById('register-btn').addEventListener('click', async () => {
+            const username = document.getElementById('register-username').value;
+            const password = document.getElementById('register-password').value;
+            const managerName = document.getElementById('manager-name').value;
+            const status = document.getElementById('user-status').value;
+            const team = document.getElementById('user-team').value;
+            const workHours = parseInt(document.getElementById('user-work-hours').value) || 8;
+            const performanceGoal = parseInt(document.getElementById('user-hour-goal').value) || 50;
+
+            if (!username || !password || !managerName || !status) {
+                document.getElementById('register-error-msg').textContent = 'Заповніть обовʼязкові поля!';
+                return;
+            }
+
+            const isRegistered = await registerUser(
+                username, password, managerName, status,
+                team, workHours, performanceGoal
+            );
+
+            const errorMsg = document.getElementById('register-error-msg');
+            const successMsg = document.getElementById('register-success-msg');
+
+            if (isRegistered) {
+                successMsg.textContent = 'Користувача додано успішно!';
+                errorMsg.textContent = '';
+                setTimeout(() => {
+                    const popup = document.getElementById('register-popup');
+                    if (popup) popup.remove();
+                }, 2000);
+                loadUsers();
+            } else {
+                errorMsg.textContent = 'Помилка! Можливо, логін вже зайнятий.';
+                successMsg.textContent = '';
+            }
+        });
+    }
+
+    function dragElement(elmnt) {
+        let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+        const header = elmnt.querySelector('.popup-header');
+        header.onmousedown = dragMouseDown;
+
+        function dragMouseDown(e) {
+            e.preventDefault();
+            pos3 = e.clientX;
+            pos4 = e.clientY;
+            document.onmouseup = closeDragElement;
+            document.onmousemove = elementDrag;
+        }
+
+        function elementDrag(e) {
+            e.preventDefault();
+            pos1 = pos3 - e.clientX;
+            pos2 = pos4 - e.clientY;
+            pos3 = e.clientX;
+            pos4 = e.clientY;
+            elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
+            elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
+        }
+
+        function closeDragElement() {
+            document.onmouseup = null;
+            document.onmousemove = null;
+        }
+    }
+
+    async function loadUsers(filterTeam = 'All') {
+        const today = getCurrentDateRequest();
+        const usersList = document.getElementById('users-list');
+
+        usersList.innerHTML = '<tr><td colspan="6" style="text-align:center;">Завантаження...</td></tr>';
+
+        try {
+            const usersResponse = await fetch(`${API_BASE_URL}/api/users`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!usersResponse.ok) throw new Error(`Users fetch error: ${usersResponse.status}`);
+            const allUsers = await usersResponse.json();
+
+            const isAll = filterTeam === 'All' || !filterTeam;
+
+            const filteredUsers = isAll
+            ? allUsers
+            : allUsers.filter(u => u.team === filterTeam);
+
+            const statsResponse = await fetch(`${API_BASE_URL}/api/get_all_statistics?date=${today}`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!statsResponse.ok) throw new Error(`Stats fetch error: ${statsResponse.status}`);
+            const stats = await statsResponse.json();
+
+            const usersWithStats = filteredUsers.map(user => {
+                const userStats = stats.find(stat => stat.id === user.id) || {};
+                return {
+                    ...user,
+                    processedToday: userStats.total_players || 0,
+                    seenToday: userStats.seen_today || 0
+                };
+            });
+
+            usersWithStats.sort((a, b) => b.processedToday - a.processedToday);
+
+            usersList.innerHTML = '';
+
+            if (usersWithStats.length === 0) {
+                usersList.innerHTML = `<tr><td colspan="6" style="text-align:center;">У команді "${filterTeam}" поки немає менеджерів</td></tr>`;
+                return;
+            }
+
+            usersWithStats.forEach(user => {
+                const row = document.createElement('tr');
+
+                const teamBadge = isAll
+                ? `<br><small style="color: #888;">${user.team || 'Без команди'}</small>`
+                : '';
+
+                row.innerHTML = `
+                <td><strong>${user.manager_name}</strong>${teamBadge}</td>
+                <td>${user.status}</td>
+                <td>${user.processedToday}</td>
+                <td><a href="#" class="seen-today-link">${user.seenToday}</a></td>
+                <td>
+                    ${user.active_url ? `<i class="fa fa-chrome active-url-btn" title="Відкрити активну вкладку" data-user-id="${user.id}"></i>` : 'Не відомо'}
+                </td>
+                <td class="actions">
+                    <i class="fa fa-bar-chart get-statistics" title="Статистика"></i>
+                    <i class="fa fa-cog user-settings" title="Налаштування"></i>
+                    <i class="fa fa-trash delete-user" title="Видалити"></i>
+                </td>
+            `;
+                usersList.appendChild(row);
+
+                row.querySelector('.get-statistics').onclick = () => getStatistics(user.id);
+                row.querySelector('.user-settings').onclick = () => createUserSettingsPopup(
+                    user.id, user.manager_name, user.username, user.status,
+                    user.performance_goal, user.work_hours, user.team || ''
+                );
+                row.querySelector('.delete-user').onclick = () => deleteUser(user.id);
+                row.querySelector('.seen-today-link').onclick = (e) => {
+                    e.preventDefault();
+                    fetchSeenEntries(user.id, today);
+                };
+
+                const activeUrlBtn = row.querySelector('.active-url-btn');
+                if (activeUrlBtn) {
+                    activeUrlBtn.onclick = () => openActiveUrl(user.id);
+                }
+            });
+
+        } catch (error) {
+            console.error('Error loading users:', error);
+            usersList.innerHTML = '<tr><td colspan="6" style="color:red; text-align:center;">Помилка завантаження даних</td></tr>';
+        }
+    }
+
+    async function openActiveUrl(userId) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/user/active_url/${userId}`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch active URL: ${response.status}`);
+            }
+
+            const data = await response.json();
+            if (data.success && data.active_url) {
+                window.open(data.active_url, '_blank');
+            } else {
+                Swal.fire('Помилка', data.message || 'Активна вкладка не знайдена', 'error');
+            }
+        } catch (error) {
+            console.error('Error fetching active URL:', error);
+            Swal.fire('Помилка', 'Не вдалося отримати активну вкладку', 'error');
+        }
+    }
+
+    function createUserSettingsPopup(userId, currentName, currentLogin, currentStatus, currentGoal, currentWorkHours, currentTeam) {
+        const teamSelectOptions = TEAMS.map(teamName => {
+            const label = teamName === '' ? 'Без команди' : teamName;
+            return `<option value="${teamName}" ${currentTeam === teamName ? 'selected' : ''}>${label}</option>`;
+        }).join('');
+
+        const content = `
+    <div class="user-settings-form">
+        <div class="form-settings-group">
+            <label>Ім'я користувача:</label>
+            <input type="text" id="user-name" value="${currentName || ''}" required>
+        </div>
+        <div class="form-settings-group">
+            <label>Команда:</label>
+            <select id="user-team">
+                ${teamSelectOptions}
+            </select>
+        </div>
+        <div class="form-settings-group">
+            <label>Логін:</label>
+            <input type="text" id="user-login" value="${currentLogin || ''}" required>
+        </div>
+        <div class="form-settings-group">
+            <label>Роль:</label>
+            <select id="user-status" required>
+                <option value="Manager" ${currentStatus === 'Manager' ? 'selected' : ''}>Менеджер</option>
+                <option value="Admin" ${currentStatus === 'Admin' ? 'selected' : ''}>Admin</option>
+            </select>
+        </div>
+        <div class="form-settings-group">
+            <label>Норма (акаунтів):</label>
+            <input type="number" id="user-goal" value="${currentGoal || 80}">
+        </div>
+        <div class="form-settings-group">
+            <label>Робочі години:</label>
+            <input type="number" id="user-workhours" value="${currentWorkHours || 7}">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px;">
+            <button id="reset-password-btn" class="dash-btn" style="background: #e67e22;">Скинути пароль</button>
+            <button id="save-settings-btn" class="dash-btn">Зберегти зміни</button>
+        </div>
+    </div>`;
+
+        createPopup('user-settings-popup', 'Налаштування користувача', content, () => {});
+
+        document.getElementById('save-settings-btn').onclick = async () => {
+            const payload = {
+                manager_name: document.getElementById('user-name').value.trim(),
+                username: document.getElementById('user-login').value.trim(),
+                team: document.getElementById('user-team').value,
+                status: document.getElementById('user-status').value,
+                performance_goal: parseInt(document.getElementById('user-goal').value, 10),
+                work_hours: parseInt(document.getElementById('user-workhours').value, 10)
+            };
+
+            if (!payload.manager_name || !payload.username) {
+                Swal.fire('Помилка', 'Заповніть обов\'язкові поля', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/users/${userId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    Swal.fire('Успіх', 'Дані користувача оновлено', 'success');
+                    document.getElementById('user-settings-popup').remove();
+                    loadUsers();
+                } else {
+                    const err = await response.json();
+                    Swal.fire('Помилка', err.message || 'Не вдалося зберегти', 'error');
+                }
+            } catch (error) {
+                Swal.fire('Помилка', 'Мережева помилка', 'error');
+            }
+        };
+
+        document.getElementById('reset-password-btn').onclick = () => changePassword(userId);
+    }
+
+    async function fetchSeenEntries(userId, selectedDate) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/get_seen_entries/${userId}?date=${selectedDate}`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                const content = `
+                <style>
+                    #updateButton {
+                        background-color: #6a5acd;
+                        color: white;
+                        padding: 10px 20px;
+                        border: none;
+                        border-radius: 5px;
+                        cursor: pointer;
+                        font-size: 16px;
+                    }
+                    #updateButton:hover {
+                        background-color: #5244a8;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                    }
+                    th, td {
+                        border: 1px solid #ddd;
+                        padding: 8px;
+                    }
+                </style>
+                <label for="datePicker">Оберіть дату:</label>
+                <input type="date" id="datePicker" value="${selectedDate}" />
+                <button id="updateButton">Оновити</button>
+                <p>Кількість переглянутих: ${data.total_seen}</p>
+                <div style="max-height: 500px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Проєкт</th>
+                                <th>ID Гравця</th>
+                                <th>Дата і час</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.seen_entries.map(entry => `
+                                <tr>
+                                    <td>${entry.project}</td>
+                                    <td><a href="${entry.url}" target="_blank">${entry.player_id}</a></td>
+                                    <td>${entry.date}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+                const popup = document.getElementById('seen-entries-popup');
+                if (popup) {
+                    popup.querySelector('.popup-content').innerHTML = content;
+                } else {
+                    createPopup('seen-entries-popup', 'Переглянуті гравці', content, () => {
+                        document.getElementById('updateButton').addEventListener('click', () => updateSeenEntries(userId));
+                    });
+                }
+
+                document.getElementById('updateButton').addEventListener('click', () => updateSeenEntries(userId));
+            } else {
+                alert('Помилка: ' + data.error);
+            }
+        } catch (error) {
+            console.error('Error fetching seen entries:', error);
+            alert('Помилка завантаження даних');
+        }
+    }
+
+    function updateSeenEntries(userId) {
+        const selectedDate = document.getElementById('datePicker').value;
+        fetchSeenEntries(userId, selectedDate);
+    }
+
+
+    function createFraudPopup() {
+        const content = `
+        <table id="my-frauds-table-popup">
+            <thead>
+                <tr>
+                    <th>Дата</th>
+                    <th>Проєкт</th>
+                    <th>ID</th>
+                    <th>Менеджер</th>
+                    <th>Коментар</th>
+                    <th>Дії</th>
+                </tr>
+            </thead>
+            <tbody id="my-frauds-list"></tbody>
+        </table>
+
+        <table id="common-frauds-table-popup">
+            <thead>
+                <tr>
+                    <th>Дата</th>
+                    <th>Проєкт</th>
+                    <th>ID</th>
+                    <th>Менеджер</th>
+                    <th>Коментар</th>
+                </tr>
+            </thead>
+            <tbody id="common-frauds-list"></tbody>
+        </table>
+
+        <button id="add-fraud-btn">Під нагляд</button>
+    `;
+
+        const style = document.createElement('style');
+        style.textContent = `
+        /* Стилі для таблиць у попапі */
+        #my-frauds-table-popup, #common-frauds-table-popup {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        #my-frauds-table-popup th, #my-frauds-table-popup td,
+        #common-frauds-table-popup th, #common-frauds-table-popup td {
+            padding: 12px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        #my-frauds-table-popup th, #common-frauds-table-popup th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        #my-frauds-table-popup tr:nth-child(even), #common-frauds-table-popup tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        #my-frauds-table-popup tr:hover, #common-frauds-table-popup tr:hover {
+            background-color: #f1f1f1;
+        }
+        .delete-fraud {
+            background-color: #f44336;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        .delete-fraud:hover {
+            background-color: #c62828;
+        }
+        .edit-fraud {
+    background-color: #FFA500; /* Оранжевый цвет для кнопки */
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    cursor: pointer;
+    border-radius: 3px;
+}
+
+.edit-fraud:hover {
+    background-color: #FF8C00; /* Темнее при наведении */
+}
+        #add-fraud-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 16px;
+            margin-top: 20px;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        #add-fraud-btn:hover {
+            background-color: #45a049;
+        }
+    `;
+        document.head.appendChild(style);
+
+        loadFrauds();
+        createPopup('fraud-popup', 'Під наглядом', content);
+
+        document.getElementById('add-fraud-btn').addEventListener('click', createAddFraudPopup);
+    }
+
+
+    async function loadFrauds() {
+
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/frauds`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch frauds: ${response.statusText}`);
+            }
+
+            const frauds = await response.json();
+            const myFraudsList = document.getElementById('my-frauds-list');
+            const commonFraudsList = document.getElementById('common-frauds-list');
+            const managerName = managerData.name;
+
+            if (!myFraudsList || !commonFraudsList) {
+                console.error('Required elements not found in the DOM.');
+                return;
+            }
+
+            myFraudsList.innerHTML = '';
+            commonFraudsList.innerHTML = '';
+
+            const style = document.createElement('style');
+            style.textContent = `
+        #my-frauds-table-popup, #common-frauds-table-popup {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        #my-frauds-table-popup th, #my-frauds-table-popup td,
+        #common-frauds-table-popup th, #common-frauds-table-popup td {
+            padding: 12px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        #my-frauds-table-popup th, #common-frauds-table-popup th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        #my-frauds-table-popup tr:nth-child(even), #common-frauds-table-popup tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        #my-frauds-table-popup tr:hover, #common-frauds-table-popup tr:hover {
+            background-color: #f1f1f1;
+        }
+.delete-fraud, .edit-fraud {
+    cursor: pointer;
+    margin-right: 10px;
+    font-size: 18px;
+}
+
+.delete-fraud {
+    color: #f44336;
+}
+
+.delete-fraud:hover {
+    color: #c62828;
+}
+
+.edit-fraud {
+    color: #4CAF50;
+}
+
+.edit-fraud:hover {
+    color: #388E3C;
+}
+
+        #add-fraud-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 16px;
+            margin-top: 20px;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        #add-fraud-btn:hover {
+            background-color: #45a049;
+        }
+    `;
+
+            frauds.forEach(fraud => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                <td>${new Date(fraud.date_added).toLocaleDateString()}</td>
+                <td>${fraud.project}</td>
+                <td><a href="${fraud.url}" target="_blank">${fraud.player_id}</a></td>
+                <td>${fraud.manager}</td>
+                <td>${fraud.comment || ''}</td>
+${fraud.manager === managerName ? `
+    <td>
+        <i class="fa fa-pencil edit-fraud" title="Редагувати"></i>
+        <i class="fa fa-trash delete-fraud" title="Видалити"></i>
+    </td>
+` : ''}
+            `;
+
+                if (fraud.manager === managerName) {
+                    myFraudsList.appendChild(row);
+                    const deleteButton = row.querySelector('.delete-fraud');
+                    const editButton = row.querySelector('.edit-fraud');
+
+                    if (deleteButton) {
+                        deleteButton.addEventListener('click', () => deleteFraud(fraud.id));
+                    }
+
+                    if (editButton) {
+                        editButton.addEventListener('click', () => editFraud(fraud.id, fraud.comment));
+                    }
+
+                } else {
+                    commonFraudsList.appendChild(row);
+                }
+            });
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
+
+    function editFraud(fraudId, currentComment) {
+
+
+        Swal.fire({
+            title: 'Редагувати коментар',
+            input: 'textarea',
+            inputValue: currentComment,
+            showCancelButton: true,
+            confirmButtonText: 'Зберегти',
+            preConfirm: (newComment) => {
+                return fetch(`${API_BASE_URL}/api/edit_fraud/${fraudId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ comment: newComment })
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                    if (data.success) {
+                        Swal.fire('Готово!', 'Коментар оновлено.', 'success');
+                        loadFrauds();
+                    } else {
+                        Swal.fire('Помилка!', data.message, 'error');
+                    }
+                })
+                    .catch(error => {
+                    console.error('Error:', error);
+                    Swal.fire('Помилка!', 'Щось пішло не так!', 'error');
+                });
+            }
+        });
+    }
+
+
+    function createAddFraudPopup() {
+        const content = `
+        <div id="add-fraud-form">
+            <input type="text" id="fraud-player-id" placeholder="ID клієнта" required />
+            <input type="text" id="fraud-url" placeholder="Посилання" required />
+            <input type="text" id="fraud-comment" placeholder="Коментар" />
+            <button id="add-fraud-confirm-btn">Додати</button>
+        </div>
+    `;
+
+        const style = document.createElement('style');
+        style.textContent = `
+        #add-fraud-form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 20px;
+            max-width: 400px;
+            margin: 0 auto;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        #add-fraud-form input {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            width: 100%;
+        }
+        #add-fraud-form input:focus {
+            border-color: #4CAF50;
+            outline: none;
+        }
+        #add-fraud-confirm-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        #add-fraud-confirm-btn:hover {
+            background-color: #45a049;
+        }
+    `;
+        document.head.appendChild(style);
+
+        createPopup('add-fraud-popup', 'Додати під нагляд', content);
+
+        document.getElementById('add-fraud-confirm-btn').addEventListener('click', async () => {
+            const playerId = document.getElementById('fraud-player-id').value;
+            const url = document.getElementById('fraud-url').value;
+            const comment = document.getElementById('fraud-comment').value;
+
+            await addFraud(playerId, url, comment);
+            document.getElementById('add-fraud-popup').remove();
+            loadFrauds();
+        });
+    }
+
+
+    async function addFraud(playerId, url, comment) {
+
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/add_fraud`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ player_id: playerId, url: url, comment: comment })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                Swal.fire({
+                    title: 'Готово!',
+                    text: 'Користувача було додано до списку.',
+                    icon: 'success',
+                });
+                loadFrauds();
+            } else {
+                alert('Виникла помилка!.');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
+    async function deleteFraud(fraudId) {
+
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/delete_fraud/${fraudId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                Swal.fire({
+                    title: 'Готово!',
+                    text: 'Користувача було видалено зі списку.',
+                    icon: 'success',
+                });
+                loadFrauds();
+            } else {
+                alert('Ошибка: ' + data.message);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
+
+    async function registerUser(username, password, managerName, status, team, workHours, performanceGoal) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/register`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    username,
+                    password,
+                    managerName,
+                    status,
+                    team,
+                    workHours,
+                    performanceGoal
+                })
+            });
+            const data = await response.json();
+            return data.success;
+        } catch (error) {
+            console.error('Error registering user:', error);
+            return false;
+        }
+    }
+
+    const stylePopUps = document.createElement('style');
+    stylePopUps.innerHTML = `
+.custom-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 20px;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    z-index: 10000;
+    cursor: move;
+    resize: both;
+    overflow: auto;
+    max-width: 90vw;
+    max-height: 90vh;
+    min-width: 150px;
+    min-height: 100px;
+}
+
+.popup-header {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 15px;
+    cursor: move;
+    user-select: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.popup-header .close-btn {
+    font-size: 16px;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background-color: #dc3545;
+    color: #fff;
+    cursor: pointer;
+    text-align: center;
+    line-height: 1;
+}
+.popup-header .close-btn:hover {
+    background-color: #c82333;
+}
+#admin-popup-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+#admin-popup-table th,
+#admin-popup-table td {
+    border: 1px solid #ddd;
+    padding: 8px;
+}
+#admin-popup-table th {
+    background-color: #f4f4f4;
+}
+#admin-popup-table tr:nth-child(even) {
+    background-color: #f2f2f2;
+}
+#admin-popup-table tr:hover {
+    background-color: #ddd;
+}
+#admin-popup-table .actions {
+    text-align: center;
+}
+#admin-popup-table .actions i {
+    cursor: pointer;
+    margin: 0 5px;
+    font-size: 18px;
+    padding: 5px;
+    border-radius: 4px;
+    color: #fff;
+}
+.get-statistics { background-color: #007bff; }
+.user-settings  { background-color: #ffc107; }
+.active-url-btn { background-color: #35d300;
+    cursor: pointer;
+    margin: 0 5px;
+    font-size: 18px;
+    padding: 5px;
+    border-radius: 4px;
+    color: #fff;}
+.delete-user { background-color: #dc3545; }
+#add-user-btn {
+    margin-top: 20px;
+    padding: 10px;
+    background-color: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+}
+#add-user-btn:hover {
+    background-color: #0056b3;
+}
+#alerts-settings-btn {
+    margin-top: 20px;
+    padding: 10px;
+    background-color: #8A2BE2;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+}
+#alerts-settings-btn:hover {
+    background-color: #9400D3;
+}
+#register-popup input, #register-popup select {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+    font-size: 16px;
+}
+#register-popup button {
+    width: 100%;
+    padding: 10px;
+    background-color: #007BFF;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+}
+#register-popup button:hover {
+    background-color: #0056b3;
+}
+#register-popup .error {
+    color: red;
+    margin-top: 10px;
+    text-align: center;
+}
+#register-popup .success {
+    color: green;
+    margin-top: 10px;
+    text-align: center;
+}
+.user-settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding: 20px;
+}
+
+.form-settings-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.form-settings-group label {
+    font-weight: bold;
+}
+
+.form-settings-group input,
+.form-settings-group select {
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.form-settings-group select {
+    width: 100%;
+}
+
+#reset-password-btn,
+#save-settings-btn {
+    padding: 10px;
+    margin-top: 10px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+#reset-password-btn {
+    background-color: #ff4444;
+    color: white;
+}
+
+#save-settings-btn {
+    background-color: #4CAF50;
+    color: white;
+}
+
+#reset-password-btn:hover {
+    background-color: #cc0000;
+}
+
+#save-settings-btn:hover {
+    background-color: #45a049;
+}
+.popup-resize-handle {
+    width: 10px;
+    height: 10px;
+    background-color: #ccc;
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    cursor: nwse-resize;
+}
+        .daterangepicker {
+            z-index: 10001 !important;
+        }
+        .swal2-container {
+  z-index: 10002;
+}
+`;
+    document.head.appendChild(stylePopUps);
+
+
+
+    async function deleteUser(userId) {
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/delete_user/${userId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                alert('Користувач видалений успішно!');
+                loadUsers();
+            } else {
+                alert('Помилка: ' + data.message);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
+
+    async function changePassword(userId) {
+
+
+        Swal.fire({
+            title: 'Ви впевнені?',
+            text: "Ви дійсно бажаєте скинути пароль?",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Так, скинути!',
+            cancelButtonText: 'Ні, повернутись'
+        }).then(async (result) => {
+            if (result.isConfirmed) {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/change_password/${userId}`, {
+                        method: 'PUT',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await response.json();
+
+                    if (data.success) {
+                        Swal.fire('Готово!', `Пароль було змінено. Новий пароль: ${data.new_password}`, 'success');
+                    } else {
+                        Swal.fire('Помилка', data.message, 'error');
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    Swal.fire('Помилка', 'Произошла ошибка при сбросе пароля', 'error');
+                }
+            }
+        });
+    }
+
+    function openTlCommentEditor(managerId, entryId, comment) {
+        const content = `
+        <style>
+            /* Встановлюємо індекс вище за вікно статистики (20000) */
+            #tl-comment-popup {
+                z-index: 30000 !important;
+            }
+            #tl-comment-editor {
+                height: 200px;
+                margin-bottom: 10px;
+                background: white;
+            }
+            .ql-container {
+                border-radius: 4px;
+            }
+            .save-comment-btn, .cancel-comment-btn {
+                padding: 10px 20px;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+                margin-right: 10px;
+            }
+            .save-comment-btn {
+                background-color: #4CAF50;
+                color: white;
+            }
+            .save-comment-btn:hover {
+                background-color: #45a049;
+            }
+            .cancel-comment-btn {
+                background-color: #ff4444;
+                color: white;
+            }
+            .cancel-comment-btn:hover {
+                background-color: #cc0000;
+            }
+        </style>
+        <div id="tl-comment-editor">${comment}</div>
+        <button class="save-comment-btn">Зберегти</button>
+        <button class="cancel-comment-btn">Скасувати</button>
+    `;
+
+        createPopup('tl-comment-popup', 'Редагувати коментар TL', content, () => {});
+
+        const popupEl = document.getElementById('tl-comment-popup');
+        if (popupEl) {
+            popupEl.style.zIndex = "30000";
+        }
+
+        const quill = new Quill('#tl-comment-editor', {
+            theme: 'snow',
+            modules: {
+                toolbar: [
+                    ['bold', 'italic', 'underline'],
+                    ['link'],
+                    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                    [{ 'color': ['#ff0000', '#008000', '#ffa500'] }],
+                    ['clean']
+                ]
+            }
+        });
+
+        if (comment) {
+            quill.root.innerHTML = comment;
+        }
+
+        document.querySelector('.save-comment-btn').addEventListener('click', async () => {
+            const tlComment = quill.root.innerHTML;
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/working/${entryId}/tl_comment`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ tl_comment: tlComment })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    Swal.fire({
+                        title: 'Успіх',
+                        text: 'Коментар TL збережено',
+                        icon: 'success',
+                        target: '#tl-comment-popup'
+                    });
+                    document.getElementById('tl-comment-popup').remove();
+                    fetchStatistics(managerId, document.getElementById('datePicker').value);
+                } else {
+                    Swal.fire('Помилка', data.message || 'Не вдалося зберегти коментар', 'error');
+                }
+            } catch (error) {
+                console.error('Error saving TL comment:', error);
+                Swal.fire('Помилка', 'Виникла помилка при збереженні коментаря', 'error');
+            }
+        });
+
+        document.querySelector('.cancel-comment-btn').addEventListener('click', () => {
+            document.getElementById('tl-comment-popup').remove();
+        });
+    }
+
+    async function fetchStatistics(userId, selectedDate, hour = null, unreadEntryIds = []) {
+        try {
+            if (!token) throw new Error('Authorization token is missing');
+
+            const userStatus = managerData.status;
+            const isAdmin = userStatus === 'Admin';
+
+            if (!window.DOMPurify) {
+                const purifyScript = document.createElement('script');
+                purifyScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.1/purify.min.js';
+                document.head.appendChild(purifyScript);
+                await new Promise((resolve) => { purifyScript.onload = resolve; });
+            }
+
+            if (isAdmin) await loadQuillResources();
+
+            let url = `${API_BASE_URL}/api/get_statistics/${userId}?date=${selectedDate}`;
+            if (hour !== null) url += `&hour=${hour}`;
+
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                const timeTitle = hour !== null ? `за ${hour}:00` : `за день`;
+                const content = `
+                <style>
+                    #statistics-popup { z-index: 20000 !important; }
+                    .popup-backdrop { z-index: 19999 !important; }
+                    #updateButton {
+                        background-color: #6a5acd; color: white; padding: 8px 16px;
+                        border: none; border-radius: 5px; cursor: pointer; font-size: 14px; margin-left: 10px;
+                    }
+                    #updateButton:hover { background-color: #5244a8; }
+                    #stats-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                    #stats-table th, #stats-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                    .unread-comment-row { background-color: #fff5f5; border: 2px solid #ff4d4d !important; cursor: pointer; }
+                    .tl-comment-placeholder { color: #888; font-size: 12px; font-style: italic; cursor: pointer; }
+                </style>
+                <div style="margin-bottom: 15px;">
+                    <label>Дата:</label>
+                    <input type="date" id="datePicker" value="${selectedDate}" style="padding: 5px;" />
+                    <button id="updateButton">Оновити</button>
+                </div>
+                <div style="display: flex; gap: 20px; margin: 15px 0; font-weight: bold; background: #f8f9fa; padding: 10px;">
+                    <span>Всього: ${data.total_players}</span>
+                    <span style="color: #007bff;">Betking: ${data.betking_count}</span>
+                    <span style="color: #ff4500;">777: ${data.seven_count}</span>
+                    <span style="color: #28a745;">Vegas: ${data.vegas_count}</span>
+                </div>
+                <div id="stats-container" style="max-height: 500px; overflow-y: auto; border: 1px solid #eee;">
+                    <table id="stats-table">
+                        <thead style="position: sticky; top: 0; background: white;">
+                            <tr>
+                                <th>Час</th>
+                                <th>ID Гравця</th>
+                                <th>Проект</th>
+                                <th>Авто</th>
+                                <th>Коментар</th>
+                                <th>Коментар TL</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.entries.map(entry => {
+                                let displayTime = '';
+                                if (entry.created_at) {
+                                    displayTime = entry.created_at.includes('T')
+                                        ? entry.created_at.split('T')[1].substring(0, 5)
+                                    : entry.created_at.substring(0, 5);
+                                }
+                                const isUnread = !isAdmin && unreadEntryIds.includes(entry.id);
+                                return `
+                                <tr data-id="${entry.id}" class="${isUnread ? 'unread-comment-row' : ''}">
+                                    <td style="font-size: 11px; color: #666;">${displayTime}</td>
+                                    <td><a href="${entry.url}" target="_blank">${entry.player_id}</a></td>
+                                    <td>${entry.project}</td>
+                                    <td style="text-align: center;">${entry.autopayment === false ? '✔' : '❌'}</td>
+                                    <td style="font-size: 12px;">${entry.comment || ''}</td>
+                                    <td ${isAdmin ? `class="tl-comment-cell-admin" data-entry-id="${entry.id}" data-comment="${encodeURIComponent(entry.tl_comment || '')}" style="cursor: pointer;"` : 'class="tl-comment-cell-user"'}>
+                                        ${isAdmin ? (entry.tl_comment || '<span class="tl-comment-placeholder">Додати...</span>') : (entry.tl_comment ? DOMPurify.sanitize(entry.tl_comment) : '')}
+                                    </td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>`;
+
+                const popupId = 'statistics-popup';
+                const popupTitle = `Статистика менеджерa ${timeTitle}`;
+                const existingPopup = document.getElementById(popupId);
+
+                if (existingPopup) {
+                    existingPopup.querySelector('.popup-content').innerHTML = content;
+                    existingPopup.style.zIndex = "20000";
+                } else {
+                    createPopup(popupId, popupTitle, content, () => {});
+                    const newPopup = document.getElementById(popupId);
+                    if (newPopup) newPopup.style.zIndex = "20000";
+                }
+
+                if (unreadEntryIds.length > 0) {
+                    setTimeout(() => {
+                        const firstUnread = document.querySelector('.unread-comment-row');
+                        if (firstUnread) {
+                            firstUnread.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    }, 500);
+                }
+
+                document.getElementById('updateButton').onclick = () => {
+                    fetchStatistics(userId, document.getElementById('datePicker').value);
+                };
+
+                if (isAdmin) {
+                    document.querySelectorAll('.tl-comment-cell-admin').forEach(el => {
+                        el.onclick = () => {
+                            openTlCommentEditor(userId, el.getAttribute('data-entry-id'), decodeURIComponent(el.getAttribute('data-comment') || ''));
+                        };
+                    });
+                } else {
+                    document.querySelectorAll('.unread-comment-row').forEach(row => {
+                        row.onclick = async function() {
+                            const entryId = this.getAttribute('data-id');
+                            try {
+                                const readResponse = await fetch(`${API_BASE_URL}/api/working/${entryId}/mark_read`, {
+                                    method: 'PUT',
+                                    headers: { 'Authorization': `Bearer ${token}` }
+                                });
+
+                                if (readResponse.ok) {
+                                    this.classList.remove('unread-comment-row');
+                                    this.style.border = "1px solid #ddd";
+                                    this.style.backgroundColor = "transparent";
+                                }
+                            } catch (err) {
+                                console.error("Помилка отметки прочтения:", err);
+                            }
+                        };
+                    });
+                }
+            }
+        } catch (error) {
+            console.error(error);
+            Swal.fire('Помилка', 'Не вдалося завантажити дані', 'error');
+        }
+    }
+
+    async function getStatistics(userId) {
+
+        const today = getCurrentDateRequest();
+
+        await fetchStatistics(userId, today);
+    }
+
+    function updateStatistics(userId) {
+        const selectedDate = document.getElementById('datePicker').value;
+        fetchStatistics(userId, selectedDate);
+    }
+
+    async function checkUnreadTlComments(userId) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/unread_tl_comments/${userId}`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            const data = await response.json();
+            if (response.ok && data.count > 0) {
+                const notification = document.createElement('div');
+                notification.className = 'tl-notification';
+                notification.innerHTML = `
+                <div class="tl-notification-content">
+                    <h3>Нові коментарі від тімліда</h3>
+                    <p>У Вас є <b>${data.count}</b> ${data.count === 1 ? 'коментар' : data.count < 4 ? 'коментарі' : 'коментарів'}. Ознайомтесь!</p>
+                    <div class="tl-notification-buttons">
+                        <button class="tl-notification-confirm-btn">Переглянути</button>
+                        <button class="tl-notification-cancel-btn">Закрити</button>
+                    </div>
+                </div>
+            `;
+
+                document.body.appendChild(notification);
+
+                const unreadEntryIds = data.comments.map(comment => comment.entry_id);
+
+                notification.querySelector('.tl-notification-confirm-btn').addEventListener('click', async () => {
+                    const firstComment = data.comments[0];
+                    await fetchStatistics(userId, firstComment.date, null, unreadEntryIds);
+                    notification.remove();
+                });
+
+                notification.querySelector('.tl-notification-cancel-btn').addEventListener('click', () => {
+                    notification.classList.add('tl-notification-closing');
+                    setTimeout(() => notification.remove(), 300);
+                });
+            }
+        } catch (error) {
+            console.error('Error checking unread TL comments:', error);
+        }
+        const style = document.createElement('style');
+        style.textContent = `
+    .tl-notification {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        max-width: 350px;
+        background-color: #fff;
+        border: 2px solid #ff0000;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        z-index: 1000;
+        animation: slideIn 0.3s ease-out, pulseBorder 1.5s infinite;
+        overflow: hidden;
+    }
+    .tl-notification-content {
+        padding: 20px;
+    }
+    .tl-notification h3 {
+        margin: 0 0 10px;
+        font-size: 18px;
+        color: #333;
+    }
+    .tl-notification p {
+        margin: 0 0 15px;
+        font-size: 14px;
+        color: #555;
+    }
+    .tl-notification-buttons {
+        display: flex;
+        gap: 10px;
+    }
+    .tl-notification-confirm-btn, .tl-notification-cancel-btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background-color 0.2s;
+    }
+    .tl-notification-confirm-btn {
+        background-color: #4CAF50;
+        color: white;
+    }
+    .tl-notification-confirm-btn:hover {
+        background-color: #45a049;
+    }
+    .tl-notification-cancel-btn {
+        background-color: #ff4444;
+        color: white;
+    }
+    .tl-notification-cancel-btn:hover {
+        background-color: #cc0000;
+    }
+    @keyframes slideIn {
+        from {
+            transform: translateX(-100%);
+            opacity: 0;
+        }
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+    .tl-notification-closing {
+        animation: fadeOut 0.3s ease-in forwards;
+    }
+    @keyframes fadeOut {
+        from {
+            opacity: 1;
+        }
+        to {
+            opacity: 0;
+        }
+    }
+    @keyframes pulseBorder {
+        0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7); }
+        50% { box-shadow: 0 0 0 6px rgba(255, 0, 0, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
+    }
+`;
+        document.head.appendChild(style);
+    }
+
+    function createStatisticPopup() {
+
+        const today = new Date().toISOString().split('T')[0];
+
+        const content = `
+        <style>
+            /* Стили только для попапа статистики */
+            #statistic-popup .popup-content {
+                padding: 20px;
+                font-family: Arial, sans-serif;
+                color: #333;
+            }
+
+            #statistic-popup #dateRangePicker {
+                width: 100%;
+                padding: 8px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                margin-bottom: 10px;
+                box-sizing: border-box;
+            }
+
+            #statistic-popup #updateStatisticsButton {
+                background-color: #007bff;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 16px;
+                margin-bottom: 20px;
+                display: block;
+                width: 100%;
+            }
+
+            #statistic-popup #updateStatisticsButton:hover {
+                background-color: #0056b3;
+            }
+
+            #statistic-popup table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 20px;
+            }
+
+            #statistic-popup th, #statistic-popup td {
+                padding: 10px;
+                border: 1px solid #ddd;
+                text-align: left;
+            }
+
+            #statistic-popup th {
+                background-color: #f4f4f4;
+                font-weight: bold;
+            }
+
+            #statistic-popup tbody tr:nth-child(even) {
+                background-color: #f9f9f9;
+            }
+
+            #statistic-popup tbody tr:hover {
+                background-color: #f1f1f1;
+            }
+
+            #statistic-popup .crown {
+                color: gold;
+                font-size: 20px;
+                vertical-align: middle;
+            }
+
+            #statistic-popup p {
+                font-size: 16px;
+                margin: 10px 0;
+            }
+                    .detail-btn {
+            background-color: #6a5acd;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 20px;
+            display: block;
+            width: 100%;
+            text-align: center;
+        }
+
+        .detail-btn:hover {
+            background-color: #5244a8;
+        }
+        </style>
+        <label for="dateRangePicker">Оберіть період:</label>
+        <input type="text" id="dateRangePicker" />
+        <button id="updateStatisticsButton">Оновити</button>
+
+        <p>Опрацьовано за період: <span id="totalPeriod">0</span></p>
+        <p>Опрацьовано всього: <span id="totalAllTime">0</span></p>
+        <p>Середнє оброблення на менеджера за період: <span id="averageProcessedPerManager">0</span></p>
+
+
+        <table id="managersTable">
+            <thead>
+                <tr>
+                    <th>Ім'я Прізвище</th>
+                    <th>Опрацьовано за період</th>
+                    <th>Опрацьовано за весь час</th>
+                    <th>Cередня кількість</th>
+                </tr>
+            </thead>
+            <tbody id="managersList"></tbody>
+        </table>
+
+         <div class="popup-actions" style="display: flex; gap: 10px; margin-top: 20px;">
+            <button id="detailStatisticsButton" class="detail-btn" style="width: 50%;">Моя статистика</button>
+            <button id="teamDashboardButton" class="detail-btn" style="width: 50%; background-color: #28a745;">Дашборд команди</button>
+        </div>
+
+    `;
+
+        createPopup('statistic-popup', 'Статистика', content, () => {});
+
+        $('#dateRangePicker').daterangepicker({
+            startDate: today,
+            endDate: today,
+            locale: {
+                format: 'YYYY-MM-DD'
+            }
+        });
+
+        document.getElementById('updateStatisticsButton').addEventListener('click', updateStatisticPopup);
+        document.getElementById('detailStatisticsButton').addEventListener('click', async () => {
+            const userId = managerData.id;
+            if (userId !== null) {
+                getStatistics(userId);
+            } else {
+                console.error('Не удалось получить ID менеджера');
+            }
+        });
+        document.getElementById('teamDashboardButton').addEventListener('click', showTeamDashboardPopup);
+
+
+        loadStatisticData(today, today);
+    }
+
+
+    async function loadStatisticData(startDate, endDate) {
+        const managersList = document.getElementById('managersList');
+
+        managersList.innerHTML = '<tr><td colspan="4" style="text-align:center;">Завантаження...</td></tr>';
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/statistics?start_date=${startDate}&end_date=${endDate}`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                let displayManagers = data.managers;
+
+                if (managerData.status === 'Manager') {
+                    const myTeam = managerData.team;
+                    displayManagers = data.managers.filter(m =>
+                                                           m.team === myTeam || m.name === managerData.name
+                                                          );
+                }
+
+                let totalPeriod = 0;
+                let totalAllTime = 0;
+                let totalAvgSum = 0;
+
+                displayManagers.forEach(m => {
+                    totalPeriod += m.processedForPeriod;
+                    totalAllTime += m.processedAllTime;
+                    totalAvgSum += m.averageProcessedPerPeriod;
+                });
+
+                const avgProcessedPerManager = displayManagers.length > 0
+                ? totalAvgSum / displayManagers.length
+                : 0;
+
+                document.getElementById('totalPeriod').textContent = totalPeriod;
+                document.getElementById('totalAllTime').textContent = totalAllTime;
+                document.getElementById('averageProcessedPerManager').textContent = avgProcessedPerManager.toFixed(2);
+
+                managersList.innerHTML = '';
+
+                if (displayManagers.length === 0) {
+                    managersList.innerHTML = '<tr><td colspan="4" style="text-align:center;">Дані відсутні</td></tr>';
+                    return;
+                }
+
+                displayManagers.forEach(manager => {
+                    const isMe = manager.name === managerData.name;
+                    const row = document.createElement('tr');
+
+                    if (isMe) {
+                        row.style.backgroundColor = '#eef2ff';
+                        row.style.fontWeight = 'bold';
+                    }
+
+                    row.innerHTML = `
+                    <td>
+                        ${isMe ? '<span class="crown">👑</span> ' : ''}
+                        ${manager.name}
+                    </td>
+                    <td>${manager.processedForPeriod}</td>
+                    <td>${manager.processedAllTime}</td>
+                    <td>${manager.averageProcessedPerPeriod.toFixed(2)}</td>
+                `;
+                    managersList.appendChild(row);
+                });
+
+            } else {
+                alert('Помилка завантаження статистики: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Сталася помилка при завантаженні статистики:', error);
+            managersList.innerHTML = '<tr><td colspan="4" style="text-align:center; color:red;">Помилка мережі</td></tr>';
+        }
+    }
+
+    function updateStatisticPopup() {
+        const dateRange = $('#dateRangePicker').data('daterangepicker');
+        const startDate = dateRange.startDate.format('YYYY-MM-DD');
+        const endDate = dateRange.endDate.format('YYYY-MM-DD');
+
+        loadStatisticData(startDate, endDate);
+    }
+
+
+    function getCurrentTime() {
+        const now = new Date();
+        const hours = now.getHours().toString().padStart(2, '0');
+        const minutes = now.getMinutes().toString().padStart(2, '0');
+        return `${hours}:${minutes}`;
+    }
+
+    function getCurrentDateRequest() {
+        const today = new Date();
+        const day = String(today.getDate()).padStart(2, '0');
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const year = today.getFullYear();
+        return `${year}-${month}-${day}`;
+
+    }
+
+    function getBalance() {
+        const balanceInput = document.querySelector('#Players_balance');
+        if (balanceInput) {
+            return balanceInput.value.trim();
+        }
+
+        const keywords = ['Баланс', 'Balance'];
+        const rows = document.querySelectorAll('tr');
+        for (const row of rows) {
+            if (keywords.some(keyword => row.textContent.includes(keyword))) {
+                const cells = row.querySelectorAll('td');
+                if (cells.length > 0) {
+                    return cells[0].textContent.trim();
+                }
+            }
+        }
+
+        return '0.00';
+    }
+
+
+    const getInnerBalanceValue = () => {
+        const innerBalance = Number(document.querySelector('input[data-field="inner_balance"]')?.value) || 0;
+
+        const totalHoldAmount = Array.from(document.querySelectorAll('.hold-amount > span.hold-amount'))
+        .reduce((sum, hold) => {
+            const match = hold.textContent.trim().match(/^([\d.]+)/);
+            return sum + (match ? Number(match[1]) || 0 : 0);
+        }, 0);
+
+        const safeBalance = Number(
+            Array.from(document.querySelectorAll('tr'))
+            .find(row => row.querySelector('th')?.textContent.trim() === 'Баланс сейфа')
+            ?.querySelector('td code')?.textContent.trim()
+        ) || 0;
+
+        const totalBalance = innerBalance + totalHoldAmount + safeBalance;
+        return totalBalance;
+    };
+
+
+    function getPlayerID() {
+        const rows = document.querySelectorAll('tr');
+        for (const row of rows) {
+            if (row.textContent.includes('Номер игрока') || row.textContent.includes('Player number') || row.textContent.includes('Номер гравця')) {
+                const span = row.querySelector('td span');
+                if (span) {
+                    return span.textContent.trim();
+                }
+            }
+        }
+        return '0.00';
+    }
+
+    function getCurrency() {
+        const rows = document.querySelectorAll('tr');
+        for (const row of rows) {
+            if (row.textContent.includes('Валюта') || row.textContent.includes('Currency')) {
+                const span = row.querySelector('td');
+                if (span) {
+                    return span.textContent.trim();
+                }
+            }
+        }
+        return '0.00';
+    }
+
+    function insertTextIntoField(text) {
+        const field = document.querySelector('#gateway-method-description-visible-antifraud_manager');
+        if (field) {
+            const pattern = /.*?(\d{2}\.\d{2}\.\d{4} в \d{2}:\d{2})?.*?Автовиплати відключено антифрод командою.*?(\d{2}:\d{2})?.*?(?=<br>|<\/[^>]+>|$)/gi;
+            field.innerHTML = field.innerHTML.replace(pattern, '').trim();
+            field.focus();
+            field.innerHTML = text + '<br>' + field.innerHTML;
+
+            const event = new Event('input', { bubbles: true });
+            field.dispatchEvent(event);
+        }
+    }
+
+    let isProfitButtonClicked = false;
+
+    function formatAmount(balance) {
+        let formattedBalance;
+        const isNegative = balance < 0;
+        const absoluteBalance = Math.abs(balance);
+
+        if (absoluteBalance >= 1000000) {
+            formattedBalance = absoluteBalance / 1000000;
+            formattedBalance = Number.isInteger(formattedBalance) ? `${formattedBalance} млн` : `${formattedBalance.toFixed(1)} млн`;
+        } else if (absoluteBalance >= 1000) {
+            formattedBalance = absoluteBalance / 1000;
+            formattedBalance = Number.isInteger(formattedBalance) ? `${formattedBalance}к` : `${formattedBalance.toFixed(1)}к`;
+        } else {
+            formattedBalance = smartRound(absoluteBalance);
+        }
+
+        return isNegative ? `-${formattedBalance}` : formattedBalance;
+    }
+
+    function smartRound(num) {
+        const val = Number(num);
+        return Number.isInteger(val) ? val.toString() : val.toFixed(2);
+    }
+
+    function handleShortcut(event) {
+        const keys = [];
+        if (event.ctrlKey) keys.push('CTRL');
+        if (event.altKey) keys.push('ALT');
+        if (event.shiftKey) keys.push('SHIFT');
+        keys.push(event.code);
+
+        const shortcut = keys.join(' + ');
+        const savedShortcut = GM_getValue('dateShortcut', 'не задано');
+
+        if (shortcut === savedShortcut) {
+            event.preventDefault();
+
+            const activeElement = document.activeElement;
+            if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.isContentEditable)) {
+                const date = getCurrentDateFormatted();
+                if (activeElement.isContentEditable) {
+                    const selection = window.getSelection();
+                    const range = selection.getRangeAt(0);
+                    range.deleteContents();
+                    range.insertNode(document.createTextNode(date));
+                    range.collapse(false);
+                    const event = new Event('input', { bubbles: true });
+                    activeElement.dispatchEvent(event);
+                } else {
+                    const startPos = activeElement.selectionStart;
+                    const endPos = activeElement.selectionEnd;
+                    activeElement.value = activeElement.value.substring(0, startPos) + date + activeElement.value.substring(endPos);
+                    activeElement.selectionStart = activeElement.selectionEnd = startPos + date.length;
+                    const event = new Event('input', { bubbles: true });
+                    activeElement.dispatchEvent(event);
+                }
+            }
+        }
+    }
+
+    const POPUP_STYLES = {
+        position: 'fixed',
+        top: '20px',
+        width: '350px',
+        zIndex: '10000',
+        overflow: 'visible'
+    };
+
+    const CONTENT_WRAPPER_STYLES = {
+        position: 'relative',
+        width: '100%',
+        maxHeight: '90vh',
+        padding: '5px',
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.1)',
+        fontFamily: '"Roboto", sans-serif',
+        fontSize: '16px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'stretch',
+        borderRadius: '30px',
+        overflow: 'auto',
+        boxSizing: 'border-box',
+        resize: 'both'
+    };
+
+    const BUTTON_STYLES = {
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '15px',
+        fontWeight: 'bold',
+        color: 'white',
+        padding: '10px 12px',
+        border: 'none',
+        borderRadius: '4px',
+        cursor: 'pointer',
+        transition: 'background-color 0.3s'
+    };
+
+    const ICON_STYLES = {
+        position: 'absolute',
+        cursor: 'pointer',
+        fontSize: '20px'
+    };
+
+    const NAV_ICON_STYLES = {
+        cursor: 'pointer',
+        fontSize: '26px'
+    };
+
+    const MESSAGE_STYLES = {
+        fontSize: '14px',
+        fontWeight: 'bold',
+        marginTop: '5px',
+        padding: '4px 8px',
+        borderRadius: '4px',
+        textAlign: 'center',
+        cursor: 'default'
+    };
+
+    function applyStyles(element, styles) {
+        Object.assign(element.style, styles);
+    }
+
+    function getColor(value) {
+        return value < 0.75 ? 'green' : (value < 1 ? 'orange' : 'red');
+    }
+
+    function formatCurrency(amount, showAmount, currencySymbol) {
+        const formattedAmount = Number(amount).toFixed(2);
+        return showAmount ? `${formatAmount(amount)}${currencySymbol}` : `${formattedAmount}${currencySymbol}`;
+    }
+
+    function createContainer(styles) {
+        const container = document.createElement('div');
+        applyStyles(container, styles);
+        return container;
+    }
+
+    async function createPopupBox({ MonthPA, TotalPA, Balance, SafeBalance, NDFL, totalPending, cards = [], displayCards = [], isCheckedToday }) {
+        if (window.popupBox) {
+            console.log('Popup already exists, skipping creation');
+            return;
+        }
+
+        const popupBox = document.createElement('div');
+        window.popupBox = popupBox;
+        const popupWidth = parseInt(POPUP_STYLES.width.replace('px', ''), 10);
+
+        popupBox.appendChild(createDragHandle(popupBox));
+
+        applyStyles(popupBox, {
+            ...POPUP_STYLES,
+            left: `calc(100% - ${popupWidth + 20}px)`,
+        });
+
+        try {
+            const contentWrapper = document.createElement('div');
+
+            applyStyles(contentWrapper, {
+                ...CONTENT_WRAPPER_STYLES,
+                border: `2px solid ${getColor(TotalPA)}`,
+                animation: 'glow 1s infinite alternate'
+            });
+
+            const headerContainer = document.createElement('div');
+            applyStyles(headerContainer, {
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                width: '100%',
+                borderBottom: '2px dashed #ccc',
+                paddingBottom: '10px',
+                marginBottom: '10px'
+            });
+
+            const iconRow = document.createElement('div');
+            applyStyles(iconRow, {
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                width: '100%',
+                padding: '0 10px',
+                boxSizing: 'border-box',
+                marginBottom: '10px'
+            });
+
+            const fraudIcon = createFraudIcon();
+            const searchIcon = createSearchIcon();
+            const adminIcon = await createAdminIcon();
+
+            iconRow.appendChild(fraudIcon);
+            iconRow.appendChild(searchIcon);
+
+            if (adminIcon) {
+                iconRow.appendChild(adminIcon);
+                addExcludeButton();
+            } else {
+                const placeholder = document.createElement('div');
+                applyStyles(placeholder, { width: '20px' });
+                iconRow.appendChild(placeholder);
+            }
+
+            headerContainer.appendChild(iconRow);
+
+            const checkedButton = createCleanButton(isCheckedToday);
+            headerContainer.appendChild(checkedButton);
+
+            const headerCardsContainer = document.createElement('div');
+            headerCardsContainer.id = 'header-verification-container';
+            applyStyles(headerCardsContainer, {
+                width: '100%',
+                marginTop: '8px',
+                fontSize: '12px',
+                textAlign: 'center'
+            });
+            headerContainer.appendChild(headerCardsContainer);
+
+            contentWrapper.appendChild(headerContainer);
+
+            contentWrapper.appendChild(await createMainText({ Balance, SafeBalance, NDFL, totalPending, MonthPA, TotalPA }));
+
+            const buttonRows = createButtonRows({ Balance, totalPending, TotalPA, isCheckedToday });
+            contentWrapper.appendChild(buttonRows);
+
+            const messagesContainer = document.createElement('div');
+            messagesContainer.className = 'popup-text';
+            applyStyles(messagesContainer, {
+                width: '100%',
+                marginTop: '15px',
+            });
+            contentWrapper.appendChild(messagesContainer);
+
+            const projectSearchContainer = document.createElement('div');
+            projectSearchContainer.className = 'project-search-results';
+            applyStyles(projectSearchContainer, { width: '100%' });
+            contentWrapper.appendChild(projectSearchContainer);
+
+            const allButtonContainer = contentWrapper.querySelector('#all-button-container');
+            const allButton = contentWrapper.querySelector('#all-button-trigger');
+
+            if (allButton && allButtonContainer) {
+                const clickHandler = window.location.hostname.includes('admin.wildwinz.com')
+                ? handleTotalInOutClick
+                : handleCombinedProfit;
+
+                allButton.addEventListener('click', async () => {
+
+                    const loader = createLoader();
+                    allButtonContainer.innerHTML = '';
+                    allButtonContainer.appendChild(loader);
+
+                    try {
+                        await Promise.all([
+                            handleProjectSearchClick(projectSearchContainer, allButton),
+                            clickHandler(messagesContainer, { Balance, totalPending })
+                        ]);
+
+                        allButtonContainer.innerHTML = '<i class="fa fa-check-circle" style="font-size: 28px; color: green; height: 40px; display: flex; align-items: center; justify-content: center;"></i>';
+
+                    } catch (err) {
+                        console.error("Ошибка при выполнении 'All':", err);
+                        allButtonContainer.innerHTML = '<i class="fa fa-times-circle" style="font-size: 28px; color: red; height: 40px; display: flex; align-items: center; justify-content: center;"></i>';
+                    }
+
+                }, { once: true });
+            }
+
+            const footerContainer = document.createElement('div');
+            applyStyles(footerContainer, {
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                width: '100%',
+                marginTop: 'auto',
+                borderTop: '2px dashed #ccc',
+                paddingTop: '10px',
+                paddingLeft: '10px',
+                paddingRight: '10px',
+                boxSizing: 'border-box'
+            });
+
+            const reminderIcon = await createReminderIcon();
+            footerContainer.appendChild(createStatisticIcon());
+            footerContainer.appendChild(reminderIcon);
+            footerContainer.appendChild(createSettingsIcon());
+
+            contentWrapper.appendChild(footerContainer)
+            popupBox.appendChild(contentWrapper)
+            document.body.appendChild(popupBox);
+            addGlobalStyles(getColor(TotalPA));
+            console.log('Popup creation completed');
+        } catch (error) {
+            console.error('Error in createPopupBox:', error);
+        }
+    }
+
+    function createDragHandle(popupBox) {
+        const dragHandle = document.createElement('div');
+        applyStyles(dragHandle, {
+            position: 'absolute',
+            top: '-20px',
+            left: '0',
+            width: '100%',
+            height: '20px',
+            cursor: 'move'
+        });
+
+        let isDragging = false, offsetX, offsetY;
+        dragHandle.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            offsetX = e.clientX - popupBox.getBoundingClientRect().left;
+            offsetY = e.clientY - popupBox.getBoundingClientRect().top;
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+
+        function onMouseMove(e) {
+            if (!isDragging) return;
+            popupBox.style.left = `${e.clientX - offsetX}px`;
+            popupBox.style.top = `${e.clientY - offsetY}px`;
+        }
+
+        function onMouseUp() {
+            isDragging = false;
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        }
+
+        return dragHandle;
+    }
+
+    async function createMainText({ Balance, SafeBalance, NDFL, totalPending, MonthPA, TotalPA }) {
+        const showAmount = GM_getValue(amountDisplayKey, true);
+        const currencySymbol = currencySymbols.get(getCurrency()) || '';
+
+        const BalanceNum = parseFloat(Balance) || 0;
+        const pendingNum = parseFloat(totalPending) || 0;
+        const safeNum = parseFloat(SafeBalance) || 0;
+        const sum = BalanceNum + pendingNum + safeNum;
+        const totalBalance = Number(sum.toFixed(2));
+        const payOutPercent = (TotalPA * 100).toFixed(0);
+
+        const mainText = document.createElement('div');
+        mainText.className = 'popup-main-text';
+
+        applyStyles(mainText, {
+            display: 'grid',
+            gridTemplateColumns: '1fr auto 1fr',
+            gap: '10px 20px',
+            alignItems: 'center',
+            textAlign: 'center',
+            width: '100%',
+            padding: '10px 0'
+        });
+
+        mainText.innerHTML = `
+        <div style="font-size: 12px;">
+            <strong style="color: #666;">Full Money</strong><br>
+            <span style="font-size: 15px; font-weight: bold;">${formatCurrency(totalBalance, showAmount, currencySymbol)}</span>
+        </div>
+        <div></div> <div style="font-size: 12px;">
+            <strong style="color: #666;">Pending</strong><br>
+            <span style="font-size: 15px; font-weight: bold;">${formatCurrency(totalPending, showAmount, currencySymbol)}</span>
+        </div>
+
+        <div style="font-size: 12px;">
+            <strong style="color: #666;">Total</strong><br>
+            <span id="total-inout-target" style="font-size: 15px; font-weight: bold; color: ${getColor(TotalPA)};">${payOutPercent}%</span>
+        </div>
+
+            <div id="all-button-container">
+                <button id="all-button-trigger" style="background-color: #2196F3; color: white; border: none; border-radius: 15px; padding: 10px 20px; font-weight: bold; cursor: pointer; font-size: 16px;">
+                    All
+                </button>
+            </div>
+
+        <div style="font-size: 12px;">
+            <strong style="color: #666;">Prognose</strong><br>
+            <span id="prognos-inout-target" style="font-size: 15px; font-weight: bold; color: red;">---</span>
+        </div>
+
+        <div style="font-size: 12px;">
+            <strong style="color: #666;">KYC</strong><br>
+            <span id="verification-provider-target" style="font-size: 15px; font-weight: bold; color: green;">---</span>
+        </div>
+        <div></div> <div style="font-size: 12px;">
+            <strong style="color: #666;">Passport</strong><br>
+            <span id="current-document-target" style="font-size: 15px; color: #333;">---</span>
+        </div>
+    `;
+
+        return mainText;
+    }
+
+    function createSettingsIcon() {
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-cog"></i>';
+
+        applyStyles(icon, { ...NAV_ICON_STYLES });
+
+        icon.title = 'Налаштування';
+        icon.onclick = createSettingsPopup;
+        return icon;
+    }
+
+    function createOldSettingsIcon() {
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-cog"></i>';
+        applyStyles(icon, { ...ICON_STYLES, top: '10px', right: '10px' });
+        icon.title = 'Налаштування';
+        icon.onclick = createSettingsPopup;
+        return icon;
+    }
+
+    function createSearchIcon() {
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-search"></i>';
+        icon.innerHTML += '<i class="fa fa-search"></i>';
+        icon.innerHTML += '<i class="fa fa-search"></i>';
+
+        applyStyles(icon, { ...NAV_ICON_STYLES });
+
+        icon.title = 'Швидкий пошук';
+        icon.onclick = () => {
+            createFindPopUp();
+        };
+        return icon;
+    }
+
+    function createStatisticIcon() {
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-signal"></i>';
+
+        applyStyles(icon, { ...NAV_ICON_STYLES });
+
+        icon.title = 'Статистика';
+        icon.onclick = createStatisticPopup;
+        return icon;
+    }
+
+    function createOldStatisticIcon() {
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-signal"></i>';
+        applyStyles(icon, { ...ICON_STYLES, top: '35px', right: '10px' });
+        icon.title = 'Статистика';
+        icon.onclick = createStatisticPopup;
+        return icon;
+    }
+
+    function createFraudIcon() {
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-eye"></i>';
+        applyStyles(icon, { ...NAV_ICON_STYLES });
+        icon.title = 'Нагляд';
+        icon.onclick = createFraudPopup;
+        return icon;
+    }
+
+    async function createReminderIcon() {
+        const showReminder = GM_getValue('reminderDisplayKey', true);
+        if (!showReminder) return document.createElement('div');
+
+        const hasNewArticles = await checkForNewArticles();
+        const shouldBlink = GM_getValue('reminderBlinkKey', true);
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-newspaper-o"></i>';
+
+        applyStyles(icon, { ...NAV_ICON_STYLES });
+
+        icon.title = 'Новини';
+        if (hasNewArticles || shouldBlink) icon.classList.add('blinking');
+        icon.onclick = () => {
+            createReminderPopup();
+            icon.classList.remove('blinking');
+            GM_setValue('reminderBlinkKey', false);
+        };
+        return icon;
+    }
+
+    async function addAdminIcon(popupBox) {
+        if (managerData.status !== 'Admin') return;
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-users"></i>';
+        applyStyles(icon, { ...ICON_STYLES, top: '70px', right: '10px', fontSize: '18px' });
+        icon.title = 'Користувачі';
+        icon.onclick = () => !document.getElementById('admin-popup') && createAdminPopup();
+        popupBox.appendChild(icon);
+        addExcludeButton();
+    }
+
+    async function createAdminIcon() {
+        if (managerData.status !== 'Admin') return null;
+
+        const icon = document.createElement('div');
+        icon.innerHTML = '<i class="fa fa-users"></i>';
+
+        applyStyles(icon, { ...NAV_ICON_STYLES, fontSize: '18px' });
+
+        icon.title = 'Користувачі';
+        icon.onclick = () => !document.getElementById('admin-popup') && createAdminPopup();
+
+        return icon;
+    }
+
+    function createButtonRows({ Balance, totalPending, TotalPA, isCheckedToday }) {
+
+        const secondRow = createContainer({
+            marginTop: '10px',
+            display: 'flex',
+            gap: '10px',
+            justifyContent: 'center'
+        });
+        const container = document.createElement('div');
+        container.appendChild(secondRow);
+        return container;
+    }
+
+    function createCleanButton(isCheckedToday) {
+        const button = document.createElement('button');
+        button.className = 'clean-button';
+
+        const baseStyles = { ...BUTTON_STYLES };
+
+        delete baseStyles.padding;
+        delete baseStyles.borderRadius;
+
+        const stateStyles = isCheckedToday
+        ? { innerText: 'Checked ✔', backgroundColor: '#d3d3d3', color: '#000', border: '2px solid #000', disabled: true, cursor: 'default' }
+        : { innerText: 'Checked', backgroundColor: '#28a745', disabled: false };
+
+        const finalStyles = {
+            ...baseStyles,
+            ...stateStyles,
+            padding: '8px 20px',
+            borderRadius: '25px',
+            fontSize: '16px'
+        };
+
+        Object.assign(button, finalStyles);
+        applyStyles(button, finalStyles);
+
+        button.onmouseover = () => !button.disabled && (button.style.backgroundColor = '#218838');
+        button.onmouseout = () => !button.disabled && (button.style.backgroundColor = '#28a745');
+
+        button.addEventListener('click', handleCleanButtonClick);
+        return button;
+    }
+
+    async function createProjectButtonContainer() {
+        if (window.location.hostname.includes('admin.wildwinz.com')) return document.createElement('div');
+
+        const container = createContainer({ marginTop: '10px', display: 'block', textAlign: 'center' });
+        const searchImage = document.createElement('img');
+        searchImage.src = 'https://cdn-icons-png.flaticon.com/512/64/64673.png';
+        applyStyles(searchImage, { cursor: 'pointer', width: '50px', height: '50px' });
+        searchImage.addEventListener('click', () => handleProjectSearchClick(container, searchImage));
+        container.appendChild(searchImage);
+        return container;
+    }
+
+    function addGlobalStyles(borderColor) {
+        const styleSheet = document.createElement('style');
+        styleSheet.innerText = `
+        @keyframes glow { 0% { box-shadow: 0 0 5px ${borderColor}; } 100% { box-shadow: 0 0 25px ${borderColor}; } }
+        @keyframes blink-red { 0% { background-color: transparent; } 50% { background-color: red; } 100% { background-color: transparent; } }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .blinking { animation: blink-red 1s infinite; }
+        #popup-container { min-height: 200px; overflow-y: auto; white-space: normal; word-wrap: break-word; }
+    `;
+        document.head.appendChild(styleSheet);
+    }
+
+    function getAntifraudCommentDate() {
+        const el = document.getElementById('gateway-method-description-visible-antifraud_manager');
+        if (!el) return null;
+
+        const text = el.innerText || el.textContent || '';
+        const firstLine = text.split('\n')[0].trim();
+
+        const match = firstLine.match(/^(\d{2})\.(\d{2})\.(\d{4})\s+в\s+(\d{2}):(\d{2})/);
+        if (!match) return null;
+
+        const [, day, month, year, hours, minutes] = match;
+        return new Date(
+            parseInt(year),
+            parseInt(month) - 1,
+            parseInt(day),
+            parseInt(hours),
+            parseInt(minutes)
+        );
+    }
+
+    function isCommentWithin7Days(date) {
+        if (!date) return false;
+        const now = new Date();
+        const diffMs = now - date;
+        const diffDays = diffMs / (1000 * 60 * 60 * 24);
+        return diffDays < 7;
+    }
+
+    function buildAntifraudComment() {
+        const date = getCurrentDate();
+        const time = getCurrentTime();
+        const initials = GM_getValue(initialsKey, '');
+        const language = GM_getValue(languageKey, 'російська');
+        const textToInsert = language === 'російська'
+        ? `${date} в ${time} проверен антифрод командой/${initials}<br>`
+        : `${date} в ${time} перевірено антифрод командою/${initials}<br>`;
+
+        return textToInsert;
+    }
+
+    function clickUpdateButton() {
+        const textarea = document.getElementById('PlayersComments_comment_antifraud_manager');
+        const visibleDiv = document.getElementById('gateway-method-description-visible-antifraud_manager');
+
+        if (textarea) {
+            textarea.value = textarea.value + '\u200B';
+        }
+        if (visibleDiv) {
+            visibleDiv.innerHTML = visibleDiv.innerHTML + '\u200B';
+        }
+
+        const btn = document.querySelector('.btn-update-comment-antifraud_manager');
+        if (btn) {
+            btn.click();
+        } else {
+            console.warn('[Antifraud] Кнопку "Обновить" не знайдено');
+        }
+    }
+
+    function setAntifraudComment(text) {
+        const visibleDiv = document.getElementById('gateway-method-description-visible-antifraud_manager');
+        const textarea = document.getElementById('PlayersComments_comment_antifraud_manager');
+
+        if (visibleDiv) {
+            const existingHTML = visibleDiv.innerHTML;
+            visibleDiv.innerHTML = text + '<br>' + existingHTML;
+        }
+        if (textarea) {
+            const existingText = textarea.value;
+            textarea.value = text + '<br>' + existingText;
+        }
+    }
+
+    function handleCleanButtonClick() {
+        const commentDate = getAntifraudCommentDate();
+        const hasRecentComment = isCommentWithin7Days(commentDate);
+        const dataToInsert = {
+            date: getCurrentDate(),
+            url: window.location.href,
+            project: getProject(),
+            playerID: getPlayerID(),
+            initials: GM_getValue('initialsKey', ''),
+            comment: `Переглянутий в ${getCurrentTime()}`
+        };
+
+        if (hasRecentComment) {
+            Swal.fire({
+                icon: 'info',
+                title: 'Коментар актуальний',
+                text: `Останнє пропрацювання: ${commentDate.toLocaleString('uk-UA')}. Оновлення без нового коментаря.`,
+                confirmButtonText: 'Оновити'
+            }).then(result => {
+                if (result.isConfirmed) {
+                    sendDataToServer(dataToInsert, token)
+                        .then(() => {
+                        clickUpdateButton();
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Успішно!',
+                            text: 'Користувач позначений як переглянутий'
+                        }).then(() => location.reload());
+                    })
+                        .catch(() => Swal.fire({
+                        icon: 'error',
+                        title: 'Помилка!',
+                        text: 'Не вдалося надіслати дані.'
+                    }));
+                }
+            });
+            return;
+        }
+
+        const newComment = buildAntifraudComment();
+        setAntifraudComment(newComment);
+
+        sendDataToServer(dataToInsert, token)
+            .then(() => {
+            clickUpdateButton();
+            Swal.fire({
+                icon: 'success',
+                title: 'Успішно!',
+                text: 'Користувач позначений як переглянутий'
+            }).then(() => location.reload());  // <-- reload тут
+        })
+            .catch(() => Swal.fire({
+            icon: 'error',
+            title: 'Помилка!',
+            text: 'Не вдалося надіслати дані.'
+        }));
+    }
+
+    function handlePendingPlusButtonClick(TotalPA) {
+        const date = getCurrentDate();
+        const time = getCurrentTime();
+        const initials = GM_getValue('initialsKey', '');
+        const language = GM_getValue(languageKey, 'російська');
+        const colorPA = getColor(TotalPA);
+        const textToInsert = language === 'російська'
+        ? `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | играет <b><font color="#14b814">своими</font></b> картами, чист, много безуспешных попыток депозита своей картой // Без угроз, потом деп прошел`
+        : `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | грає <b><font color="#14b814">власними</font></b> картками, чистий, багато безуспішних спроб депозиту своєю карткою, потім деп пройшов`;
+        insertTextIntoField(textToInsert);
+    }
+
+    function handlePendingMinusButtonClick(TotalPA) {
+        const date = getCurrentDate();
+        const time = getCurrentTime();
+        const initials = GM_getValue('initialsKey', '');
+        const language = GM_getValue(languageKey, 'російська');
+        const colorPA = getColor(TotalPA)
+
+        const textToInsert = language === 'російська'
+        ? `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | много безуспешных попыток депозита <b>неизвестными</b> картами, <b>авто отключаем</b>`
+        : `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span></b> | багато безуспішних спроб депозиту <b>невідомими</b> картками, <b>авто відключаємо</b>`;
+        insertTextIntoField(textToInsert);
+    }
+
+    function createProjectContainer(project, projectUrl) {
+        const container = createContainer({
+            flex: 1,
+            padding: '4px 5px 0 5px',
+            boxSizing: 'border-box',
+            borderTop: '2px dashed #ccc',
+            textAlign: 'center'
+        });
+
+        if (!projectUrl) {
+            console.error(`projectUrl is undefined for project: ${project}`);
+            container.innerHTML = `<div>Ошибка: не удалось определить домен для проекта ${project}</div>`;
+            return container;
+        }
+
+        const domainMatch = projectUrl.match(/https:\/\/[^\/]+/);
+        if (!domainMatch) {
+            console.error(`Invalid projectUrl for project ${project}: ${projectUrl}`);
+            container.innerHTML = `<div>Ошибка: некорректный домен для проекта ${project}</div>`;
+            return container;
+        }
+
+        const imageWrapper = document.createElement('div');
+        applyStyles(imageWrapper, {
+            height: '50px',
+            marginBottom: '10px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+        });
+
+        const image = document.createElement('img');
+        const domain = domainMatch[0];
+        image.src = `${domain}/img/${project}.png`;
+
+        applyStyles(image, {
+            maxWidth: project === 'vegas' ? '75%' : '100%',
+            maxHeight: '100%',
+            objectFit: 'contain'
+        });
+
+        imageWrapper.appendChild(image);
+        container.appendChild(imageWrapper);
+
+        return container;
+    }
+
+    function getSearchIcon(fieldType) {
+        if (fieldType === 'inn') {
+            return '<i class="fa fa-user" aria-hidden="true"></i>';
+        }
+        if (fieldType === 'email') {
+            return '<i class="fa fa-envelope-o" aria-hidden="true"></i>';
+        }
+        if (fieldType === 'phone') {
+            return '<i class="fa fa-phone" aria-hidden="true"></i>';
+        }
+        return '';
+    }
+
+    let CURRENT_PLAYER_CARDS = {};
+
+    function getCard(statusValue) {
+        if (statusValue === 'Верифицирована') {
+            return 'own';
+        }
+        if (statusValue === 'Чужая' || statusValue === 'other_person_card' || statusValue === 'other_person_approved_card') {
+            return 'foreign';
+        }
+        return 'unknown';
+    }
+
+    function getCardNumber(td) {
+        const span = td.querySelector('span[title="Копіювати"]');
+        if (span) {
+            return span.textContent.trim();
+        }
+        const strong = td.querySelector('strong');
+        if (strong) {
+            return strong.textContent.trim();
+        }
+        return null;
+    }
+
+    function initializeCurrentPlayerCards() {
+        const grid = document.getElementById('payments-cards-masks-grid');
+        if (!grid) {
+            console.warn('Card grid #payments-cards-masks-grid not found in DOM for parsing.');
+            return;
+        }
+
+        CURRENT_PLAYER_CARDS = {};
+        const rows = grid.querySelectorAll('tbody tr');
+
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if (cells.length < 5) return;
+
+            const card = getCardNumber(cells[1]);
+            const statusInput = cells[4].querySelector('input.payment-cards-masks-change-status');
+
+            if (card && statusInput) {
+                const statusValue = statusInput.value;
+                CURRENT_PLAYER_CARDS[card] = getCard(statusValue);
+            }
+        });
+
+        console.log('Карты текущего игрока:', CURRENT_PLAYER_CARDS);
+    }
+
+    function appendProjectResult({ container, fieldType, html }) {
+        const div = document.createElement('div');
+
+        applyStyles(div, {
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            textAlign: 'left',
+            marginTop: '4px',
+            fontSize: '16px'
+        });
+
+        div.innerHTML = html;
+
+        if (fieldType === 'inn') {
+            div.id = `inn-result-${container.id}`;
+        }
+
+        if (fieldType === 'inn') {
+            const img = container.querySelector('img');
+            if (img) {
+                img.parentElement.after(div);
+            } else {
+                container.prepend(div);
+            }
+        } else {
+            container.appendChild(div);
+        }
+    }
+
+    function appendCardResult({ container, html }) {
+
+        if (container.id === 'current-project-cards-container' && !container.dataset.hasHeader) {
+
+            applyStyles(container, {
+                marginTop: '15px',
+                paddingTop: '4px',
+                textAlign: 'center',
+                borderTop: '2px dashed #ccc'
+            });
+
+            const title = document.createElement('div');
+            applyStyles(title, {
+                textAlign: 'center',
+                fontWeight: 'bold',
+                fontSize: '14px',
+                marginBottom: '5px'
+            });
+            title.innerText = 'Перетини карт на поточному проєкті:';
+            container.appendChild(title);
+
+            container.dataset.hasHeader = 'true';
+        }
+
+
+        const div = document.createElement('div');
+        applyStyles(div, {
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            textAlign: 'center',
+            marginTop: '4px',
+            fontSize: '14px'
+        });
+        div.innerHTML = html;
+        container.appendChild(div);
+    }
+
+    function cleanExtractedText(html) {
+        if (!html) return null;
+        const temp = document.createElement('div');
+        temp.innerHTML = html;
+        temp.querySelectorAll('script, .modal, button').forEach(el => el.remove());
+        const input = temp.querySelector('input[type="text"]');
+        return input && input.value ? input.value.trim() : (temp.textContent || temp.innerText).trim();
+    }
+
+    function revealContact(type) {
+        return new Promise(resolve => {
+            const label = type === 'email' ? 'E-mail' : 'Телефон';
+            const row = Array.from(document.querySelectorAll('tr')).find(r => r.querySelector('th')?.textContent.trim() === label);
+            if (!row) return resolve(null);
+
+            const td = row.querySelector('td');
+            const btn = td.querySelector('input[value="Показать"]');
+
+            if (!btn) return resolve(cleanExtractedText(td.innerHTML));
+
+            btn.click();
+            let attempts = 0;
+            const interval = setInterval(() => {
+                if (!td.querySelector('input[value="Показать"]')) {
+                    clearInterval(interval);
+                    const result = cleanExtractedText(td.innerHTML);
+                    if (result && result.length > 2) resolve(result);
+                } else if (++attempts >= 30) {
+                    clearInterval(interval);
+                    resolve(cleanExtractedText(td.innerHTML));
+                }
+            }, 100);
+        });
+    }
+
+    function handleProjectSearchClick(container, searchImage) {
+        container.innerHTML = '';
+
+        const projectUrls = {
+            'betking': 'https://admin.betking.com.ua/players/playersItems/search/',
+            '777': 'https://admin.777.ua/players/playersItems/search/',
+            'vegas': 'https://admin.vegas.ua/players/playersItems/search/'
+        };
+
+        initializeCurrentPlayerCards();
+        const currentProject = Object.keys(projectUrls).find(p => window.location.hostname.includes(p)) || 'vegas';
+        const otherProjects = Object.keys(projectUrls).filter(p => p !== currentProject);
+
+        const url = getAjaxUrl();
+        if (!url) {
+            container.innerHTML += '<div>Не удалось найти URL для запроса.</div>';
+            return;
+        }
+
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url,
+            onload: async response => {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = response.responseText;
+
+                const docTarget = document.getElementById('current-document-target');
+                if (docTarget) {
+                    const creds = '#common_services_players_models_PlayerCredentials_';
+                    const idCard = tempDiv.querySelector(`${creds}id_card`)?.value;
+                    const pSeries = tempDiv.querySelector(`${creds}passport_series`)?.value;
+                    const pNumber = tempDiv.querySelector(`${creds}passport_number`)?.value;
+                    const otherDoc = tempDiv.querySelector(`${creds}other_document`)?.value;
+
+                    const currentDocument = idCard || ((pSeries && pNumber) ? pSeries + pNumber : null) || otherDoc || null;
+
+                    if (currentDocument) {
+                        docTarget.innerHTML = currentDocument;
+                        docTarget.dataset.document = currentDocument;
+                        docTarget.style.color = '#333';
+                    } else {
+                        docTarget.innerHTML = 'Док. не найден';
+                    }
+                }
+
+                const inn = tempDiv.querySelector('#common_services_players_models_PlayerCredentials_inn')?.value;
+
+                const loaderId = 'loading-contacts-' + Date.now();
+                container.insertAdjacentHTML('beforeend', `<div id="${loaderId}" style="padding:5px; color:#666;"><i class="fa fa-spinner fa-spin"></i> Открываю контакты...</div>`);
+
+                const [email, phone] = await Promise.all([
+                    revealContact('email'),
+                    revealContact('phone')
+                ]);
+
+                const loader = document.getElementById(loaderId);
+                if (loader) loader.remove();
+
+                const projectsRow = document.createElement('div');
+                applyStyles(projectsRow, {
+                    display: 'flex',
+                    flexDirection: 'row',
+                    justifyContent: 'space-around',
+                    width: '100%',
+                    marginTop: '10px'
+                });
+
+                otherProjects.forEach(project => {
+                    const projectUrl = projectUrls[project];
+                    const projectContainer = createProjectContainer(project, projectUrl);
+                    projectContainer.id = `project-container-${project}`;
+                    projectsRow.appendChild(projectContainer);
+
+                    searchUser(inn, 'inn', projectUrl, projectContainer);
+                    if (email) searchUser(email, 'email', projectUrl, projectContainer);
+                    if (phone) searchUser(phone, 'phone', projectUrl, projectContainer);
+
+                    processProjectCards(project, projectUrl, projectContainer);
+                });
+
+                container.appendChild(projectsRow);
+
+                const currentCardsContainer = document.createElement('div');
+                currentCardsContainer.id = 'current-project-cards-container';
+                applyStyles(currentCardsContainer, { width: '100%' });
+                container.appendChild(currentCardsContainer);
+
+                processCurrentProjectCards(currentProject, projectUrls[currentProject], currentCardsContainer);
+            },
+            onerror: () => container.innerHTML += '<div>Ошибка при получении данных.</div>'
+        });
+    }
+
+    function searchUser(query, fieldType, projectUrl, container, native_document_id) {
+        const searchTypeLabel = getSearchIcon(fieldType);
+
+        if (!query || query === 'Не задан' || query === 'Не заданий') {
+            appendProjectResult({
+                container,
+                fieldType,
+                html: `<b>${searchTypeLabel}</b> не знайдено`
+            });
+            return;
+        }
+
+        GM_xmlhttpRequest({
+            method: 'POST',
+            url: projectUrl,
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            data: `PlayersSearchForm[${fieldType}]=${encodeURIComponent(query)}`,
+            onload: response => {
+                if (response.finalUrl.includes('/update/')) {
+                    getUserInfo(response.finalUrl, fieldType, container, native_document_id);
+                } else {
+                    handleMultipleUsersFound(response.responseText, projectUrl, container, fieldType);
+                }
+            },
+            onerror: () => appendProjectResult({
+                container,
+                fieldType,
+                html: `<b>${searchTypeLabel}</b> Помилка при пошуку`
+            })
+        });
+    }
+
+    function getUserInfo(url, fieldType, container,) {
+        const searchTypeLabel = getSearchIcon(fieldType);
+
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url,
+            onload: response => {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = response.responseText;
+                const playerLabels = ['Номер игрока', 'Player number', 'Номер гравця'];
+                let playerId = null;
+
+                for (const label of playerLabels) {
+                    const foundValue = getValueByLabel(tempDiv, label);
+                    if (foundValue && parseFloat(foundValue) !== 0) {
+                        playerId = foundValue;
+                        break;
+                    }
+                }
+
+                if (!playerId) {
+                    console.warn(`Не удалось найти ID игрока по меткам ${playerLabels.join(', ')} для URL: ${url}`);
+                }
+
+                let status = determineUserStatus(tempDiv);
+
+                if (fieldType === 'inn' && playerId) {
+                    container.dataset.foundPlayerId = playerId;
+                }
+
+                if (fieldType !== 'inn') {
+                    appendProjectResult({
+                        container,
+                        fieldType,
+                        html: `<b>${searchTypeLabel}</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>`
+                    });
+                    return;
+                }
+
+                const scripts = tempDiv.querySelectorAll('script');
+                let credentialsUrl = null;
+                for (const script of scripts) {
+                    if (script.textContent.includes('#credentials-info')) {
+                        const urlMatch = script.textContent.match(/url:\s*'([^']+)'/);
+                        if (urlMatch) {
+                            credentialsUrl = urlMatch[1];
+                            break;
+                        }
+                    }
+                }
+
+                if (credentialsUrl) {
+                    const absoluteCredentialsUrl = new URL(credentialsUrl, url).href;
+                    GM_xmlhttpRequest({
+                        method: 'GET',
+                        url: absoluteCredentialsUrl,
+                        onload: credentialsResponse => {
+                            const credentialsDiv = document.createElement('div');
+                            credentialsDiv.innerHTML = credentialsResponse.responseText;
+
+                            const idCard = credentialsDiv.querySelector('#common_services_players_models_PlayerCredentials_id_card')?.value;
+                            const passportSeries = credentialsDiv.querySelector('#common_services_players_models_PlayerCredentials_passport_series')?.value;
+                            const passportNumber = credentialsDiv.querySelector('#common_services_players_models_PlayerCredentials_passport_number')?.value;
+                            const passportFull = (passportSeries && passportNumber) ? (passportSeries + passportNumber) : null;
+                            const otherDocument = credentialsDiv.querySelector('#common_services_players_models_PlayerCredentials_other_document')?.value;
+                            const found_document_id = idCard || passportFull || otherDocument || null;
+
+                            const currentDocTarget = document.getElementById('current-document-target');
+                            if (currentDocTarget && found_document_id) {
+                                const currentDocValue = currentDocTarget.dataset.document;
+                                if (currentDocValue && currentDocValue !== found_document_id) {
+                                    currentDocTarget.style.color = 'red';
+                                }
+                            }
+
+                            let documentHtml = '';
+                            if (found_document_id) {
+                                documentHtml = `<br> <i class="fa fa-id-card-o" aria-hidden="true"></i>  ${found_document_id}`;
+                            }
+                            const relatedGrid = tempDiv.querySelector('#payments-cards-masks-grid');
+
+                            if (!relatedGrid) {
+                                console.warn(`Не найден #payments-cards-masks-grid на ${url}`);
+                                return;
+                            }
+
+                            const relatedRows = relatedGrid.querySelectorAll('tbody tr');
+                            relatedRows.forEach(row => {
+                                const cells = row.querySelectorAll('td');
+                                if (cells.length < 5) return;
+
+                                const card = getCardNumber(cells[1]);
+                                const statusInput = cells[4].querySelector('input.payment-cards-masks-change-status');
+
+                                if (card && statusInput) {
+                                    const relatedStatusValue = statusInput.value;
+                                    const relatedStatus = getCard(relatedStatusValue);
+
+                                    const currentStatus = CURRENT_PLAYER_CARDS[card];
+
+                                    if (currentStatus && currentStatus !== relatedStatus) {
+                                        let color = 'grey';
+                                        if (relatedStatus === 'own') color = 'green';
+                                        if (relatedStatus === 'foreign') color = 'red';
+
+                                        appendCardResult({
+                                            container: container,
+                                            html: `<i class="fa fa-credit-card" style="color:${color};"></i> ${card}`
+                                        });
+                                    }
+                                }
+                            });
+                            appendProjectResult({
+                                container,
+                                fieldType,
+                                html: `<b>${searchTypeLabel}</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>${documentHtml}`
+                            });
+                        },
+                        onerror: () => appendProjectResult({
+                            container,
+                            fieldType,
+                            html: `<b>${searchTypeLabel}</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>`
+                        })
+                    });
+                } else {
+                    appendProjectResult({
+                        container,
+                        fieldType,
+                        html: `<b>${searchTypeLabel}</b> <a class="label label-${status}" href="${url}" target="_blank">${playerId}</a>`
+                    });
+                }
+            },
+            onerror: () => appendProjectResult({
+                container,
+                fieldType,
+                html: `<b>${searchTypeLabel}</b> Помилка при отриманні даних користувача.`
+            })
+        });
+    }
+
+    function handleMultipleUsersFound(responseText, projectUrl, container, fieldType) {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = responseText;
+        const playerCards = tempDiv.querySelectorAll('.player_card');
+        const searchTypeLabel = getSearchIcon(fieldType);
+
+        if (playerCards.length > 0) {
+            const resultsContainer = document.createElement('div');
+            resultsContainer.innerHTML = `<b>${searchTypeLabel}:</b> `;
+            const domain = new URL(projectUrl).origin;
+
+            playerCards.forEach(card => {
+                const link = card.querySelector('a');
+                if (!link) return;
+
+                if (link.getAttribute('href').startsWith('/')) {
+                    link.href = domain + link.getAttribute('href');
+                    link.target = '_blank';
+                }
+
+                const icon = link.querySelector('i');
+                if (icon) {
+                    icon.remove();
+                }
+
+                link.className = '';
+                link.classList.add('label', 'label-primary');
+
+                resultsContainer.appendChild(link);
+                resultsContainer.appendChild(document.createTextNode(' '));
+            });
+
+            appendProjectResult({ container, fieldType, html: resultsContainer.innerHTML });
+        } else {
+            appendProjectResult({ container, fieldType, html: `<b>${searchTypeLabel}</b> не знайдено` });
+        }
+    }
+
+    function determineUserStatus(tempDiv) {
+        const attentionHeaders = tempDiv.querySelectorAll('h1.attention-header, .attention-header-content');
+        for (const header of attentionHeaders) {
+            const text = header.textContent.trim();
+            if (text.includes('Дубликат') || text.includes('Отключен') || text.includes('Ограничение по возрасту!') || text.includes('Не подтвержден')) return 'danger';
+            if (text.includes('Лудоман')) return 'info';
+        }
+        return ['Имя', 'Middle Name', 'Фамилия'].every(field => {
+            const row = [...tempDiv.querySelectorAll('tr')].find(r => r.querySelector('th')?.textContent.includes(field));
+            return row && ['Не задан', 'Не заданий', ''].includes(row.querySelector('td')?.textContent.trim());
+        }) ? 'default' : 'success';
+    }
+
+    function processProjectCards(project, projectUrl, container) {
+        fetchAllCards().then(data => {
+            const cards = data.cards;
+            const searchUrl = projectUrl.replace('/players/playersItems/search/', '/payments/paymentsItemsOut/requisite/');
+            const openUrl = projectUrl.replace('/players/playersItems/search/', '');
+            cards.forEach(card => processCard(card, searchUrl, openUrl, container));
+        });
+    }
+
+    function processCard(card, searchUrl, openUrl, container) {
+        GM_xmlhttpRequest({
+            method: 'POST',
+            url: searchUrl,
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            data: `PaymentsRequisiteForm[requisite]=${encodeURIComponent(card)}`,
+            onload: response => {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = response.responseText;
+                const table = tempDiv.querySelector('table.items tbody');
+                if (!table) return;
+
+                const innPlayerId = container.dataset.foundPlayerId;
+
+                table.querySelectorAll('tr').forEach(row => {
+                    const playerCard = row.querySelector('td span.player_card');
+                    if (playerCard) {
+
+                        const link = playerCard.querySelector('a');
+                        if (!link) return;
+
+                        const cardOwnerPlayerId = link.textContent.trim();
+
+                        if (innPlayerId && cardOwnerPlayerId === innPlayerId) {
+                            return;
+                        }
+
+                        appendCardResult({
+                            container: container,
+                            html: `<i class="fa fa-exchange" aria-hidden="true"></i> <b>${card.slice(0, 6)}|${card.slice(-4)}:</b> ${cleanCardHtml(playerCard.outerHTML, openUrl)}`
+                        });
+                    }
+                });
+            }
+        });
+    }
+
+    function processCurrentProjectCards(project, projectUrl, container) {
+        fetchAllCards().then(data => {
+            const cards = data.cards;
+            const searchUrl = projectUrl.replace('/players/playersItems/search/', '/payments/paymentsItemsOut/requisite/');
+            const openUrl = projectUrl.replace('/players/playersItems/search/', '');
+
+            cards.forEach(card => {
+                GM_xmlhttpRequest({
+                    method: 'POST',
+                    url: searchUrl,
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    data: `PaymentsRequisiteForm[requisite]=${encodeURIComponent(card)}`,
+                    onload: response => {
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = response.responseText;
+                        const table = tempDiv.querySelector('table.items tbody');
+                        if (!table) return;
+
+                        table.querySelectorAll('tr').forEach(row => {
+                            const playerCard = row.querySelector('td span.player_card');
+                            if (playerCard && !playerCard.outerHTML.includes(userId)) {
+                                appendCardResult({
+                                    container: container,
+                                    html: `<b>${card.slice(0, 6)}|${card.slice(-4)}:</b> ${cleanCardHtml(playerCard.outerHTML, openUrl)}`
+                                });
+                            }
+                        });
+                    }
+                });
+            });
+        });
+    }
+
+    function cleanCardHtml(cardHtml, openUrl) {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = cardHtml;
+        tempDiv.querySelectorAll('a').forEach(link => link.setAttribute('href', `${openUrl}${link.getAttribute('href')}`));
+        const span = tempDiv.querySelector('.player_card');
+        if (span) {
+            span.removeAttribute('rel');
+            span.removeAttribute('data-content');
+        }
+        return tempDiv.innerHTML;
+    }
+
+    const PROJECT_DOMAINS = [
+        'https://admin.777.ua/',
+        'https://admin.vegas.ua/',
+        'https://admin.betking.com.ua/'
+    ];
+
+    function insertTextToComment(textToInsert, shouldUpdate) {
+        const gatewayElement = document.getElementById('gateway-method-description-visible-antifraud_manager');
+        const doneButton = document.querySelector('.btn-update-comment-antifraud_manager');
+
+        if (!gatewayElement) {
+            console.warn('Element with id "gateway-method-description-visible-antifraud_manager" not found.');
+            return;
+        }
+
+        const currentLanguage = GM_getValue(languageKey, 'російська');
+        const fieldDate = getDateFromField();
+        const today = getCurrentDate();
+
+        if (fieldDate === today) {
+            const lines = gatewayElement.innerHTML.trim().split('<br>');
+            if (lines.length > 1) {
+                let secondLine = lines[1];
+                let lastPipeIndex = secondLine.lastIndexOf('|');
+                let foundValidIndex = false;
+
+                while (lastPipeIndex !== -1) {
+                    const beforePipe = secondLine.slice(0, lastPipeIndex).trim();
+                    const afterPipe = secondLine.slice(lastPipeIndex + 1).trim();
+
+                    const beforeMatch = beforePipe.match(/\d{4}$/);
+                    const afterMatch = afterPipe.match(/^\d{2}/);
+
+                    if (!(beforeMatch && afterMatch)) {
+                        const validBeforePipe = secondLine.slice(0, lastPipeIndex + 1);
+                        const validAfterPipe = secondLine.slice(lastPipeIndex + 1).trim();
+                        const updatedSecondLine = `${validBeforePipe} ${textToInsert} | ${validAfterPipe}`.trim();
+                        lines[1] = updatedSecondLine;
+
+                        gatewayElement.innerHTML = lines.join('<br>');
+                        gatewayElement.dispatchEvent(new Event('input'));
+
+                        if (shouldUpdate) {
+                            if (doneButton) {
+                                doneButton.click();
+                            }
+                        }
+
+                        foundValidIndex = true;
+                        break;
+                    }
+
+                    lastPipeIndex = secondLine.lastIndexOf('|', lastPipeIndex - 1);
+                }
+
+                if (!foundValidIndex) {
+                    console.warn('Valid "|" not found in the second line.');
+                }
+            } else {
+                console.warn('Not enough lines to process the second line.');
+            }
+        } else {
+            const checkButton = document.getElementById('check-button');
+            if (checkButton) {
+                checkButton.click();
+
+                const lines = gatewayElement.innerHTML.trim().split('<br>');
+                if (lines.length > 1) {
+                    const secondLine = lines[1];
+                    const lastPipeIndex = secondLine.lastIndexOf('|');
+                    if (lastPipeIndex !== -1) {
+                        const beforePipe = secondLine.slice(0, lastPipeIndex + 1);
+                        const afterPipe = secondLine.slice(lastPipeIndex + 1).trim();
+                        const updatedSecondLine = `${beforePipe} ${afterPipe} ${textToInsert} |`.trim();
+                        lines[1] = updatedSecondLine;
+                        gatewayElement.innerHTML = lines.join('<br>');
+                        gatewayElement.dispatchEvent(new Event('input'));
+                        if (shouldUpdate) {
+                            if (doneButton) {
+                                doneButton.click();
+                            }
+                        }
+                    } else {
+                        console.warn('Symbol "|" not found in the second line.');
+                    }
+                } else {
+                    console.warn('Not enough lines to process the second line.');
+                }
+            } else {
+                console.warn('Button with id "check-button" not found.');
+            }
+        }
+    }
+
+    function getTomorrowDate() {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const year = tomorrow.getFullYear();
+        const month = String(tomorrow.getMonth() + 1).padStart(2, '0');
+        const day = String(tomorrow.getDate()).padStart(2, '0');
+        return `${year}.${month}.${day}`;
+    }
+
+    async function handleCombinedProfit(container, { Balance, totalPending }) {
+        const totalTarget = document.getElementById('total-inout-target');
+        const prognosTarget = document.getElementById('prognos-inout-target');
+        const projectSearchWrapper = document.querySelector('.project-search-results');
+
+        if (totalTarget) totalTarget.innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
+        if (prognosTarget) prognosTarget.innerHTML = '<i class="fa fa-spinner fa-spin"></i>';
+
+        try {
+            const playerID = getPlayerID();
+            const baseURL = `${ProjectUrl}players/playersDetail/index/`;
+            // Видалити, коли задача Владонича зайде на всі проєкти
+            const tempFix = `PlayersDetailForm[login]=${encodeURIComponent(playerID)}&PlayersDetailForm[period]=2017.01.01+00:00:00+-+${getTomorrowDate()}+23:59:59&PlayersDetailForm[show_table]=1`
+
+            const currentPlayerData = await new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'POST',
+                    url: baseURL,
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    data: `backend_modules_players_models_PlayersDetailForm[login]=${encodeURIComponent(playerID)}&backend_modules_players_models_PlayersDetailForm[period]=2017.01.01+00:00:00+-+${getTomorrowDate()}+23:59:59&backend_modules_players_models_PlayersDetailForm[show_table]=1&${tempFix}`,
+                    onload: response => {
+                        const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                        const table = doc.querySelector('.detail-view');
+
+                        if (!table) {
+                            reject(new Error('Таблица текущего игрока не найдена'));
+                            return;
+                        }
+
+                        let depositsTotal = 0, redeemsTotal = 0;
+                        table.querySelectorAll('tr').forEach(row => {
+                            const key = row.querySelector('th')?.textContent.trim();
+                            const value = parseFloat(row.querySelector('td')?.textContent.trim().replace(/[^0-9.-]/g, '')) || 0;
+                            if (key === 'Deposits Total') depositsTotal = value;
+                            if (key === 'Redeems Total') redeemsTotal = value;
+                        });
+
+                        const profit = depositsTotal - redeemsTotal;
+                        resolve({ deposits: depositsTotal, withdrawals: redeemsTotal, profit });
+                    },
+                    onerror: error => reject(error)
+                });
+            });
+
+            const inn = await getPlayerInn();
+            if (!inn) {
+                handleTotalInOutClick(container, { Balance, totalPending });
+                if (totalTarget) totalTarget.innerHTML = '---';
+                if (prognosTarget) prognosTarget.innerHTML = '---';
+                return;
+            }
+
+            const currentProject = window.location.origin + '/';
+            const searchDomains = PROJECT_DOMAINS.filter(domain => domain !== currentProject);
+            const foundPlayers = await Promise.all(
+                searchDomains.map(domain => searchPlayerByInn(domain, inn))
+            );
+
+            const validPlayers = foundPlayers.filter(result => result && result.playerId);
+            const relatedResults = await Promise.all(
+                validPlayers.map(result => calculateTotalInOut(result.domain, result.playerId))
+            );
+
+            const cleanBalance = parseFloat(Balance) || 0;
+            const safeBalance = getInnerBalanceValue();
+            const profit = currentPlayerData.profit;
+            const prognoseInOut = currentPlayerData.deposits - (totalPending + currentPlayerData.withdrawals + cleanBalance + safeBalance);
+            const prognosePA = currentPlayerData.deposits ? ((currentPlayerData.withdrawals + totalPending + cleanBalance + safeBalance) / currentPlayerData.deposits) * 100 : 0;
+            const showAmount = GM_getValue(amountDisplayKey, true);
+            const currencySymbol = currencySymbols.get(getCurrency()) || '';
+            const totalProfit = currentPlayerData.profit + relatedResults.reduce((sum, r) => sum + (r.depositsTotal - r.redeemsTotal), 0);
+
+            if (totalTarget) {
+                const formattedValue = formatCurrency(profit, showAmount, currencySymbol);
+                const dataText = `<b>Total InOut: <span style="color: ${getBalanceColor(profit)}">${formattedValue}</span></b>`;
+
+                totalTarget.innerHTML = formattedValue;
+                totalTarget.style.color = getBalanceColor(profit);
+                totalTarget.classList.add('clickable');
+                totalTarget.dataset.text = dataText;
+
+                totalTarget.addEventListener('click', () => {
+                    if (totalTarget.dataset.clicked === 'true') return;
+                    insertTextToComment(totalTarget.dataset.text);
+                    totalTarget.dataset.clicked = 'true';
+                    totalTarget.style.opacity = '0.85';
+                }, { once: false });
+            }
+
+            if (prognosTarget) {
+                const formattedValue = formatCurrency(prognoseInOut, showAmount, currencySymbol);
+                const dataText = `<b>Prognose InOut: <span style="color: ${getBalanceColor(prognoseInOut)}">${formattedValue}</span></b>`;
+
+                prognosTarget.innerHTML = formattedValue;
+                prognosTarget.style.color = getBalanceColor(prognoseInOut);
+                prognosTarget.classList.add('clickable');
+                prognosTarget.dataset.text = dataText;
+
+                prognosTarget.addEventListener('click', () => {
+                    if (prognosTarget.dataset.clicked === 'true') return;
+                    insertTextToComment(prognosTarget.dataset.text);
+                    prognosTarget.dataset.clicked = 'true';
+                    prognosTarget.style.opacity = '0.85';
+                }, { once: false });
+
+                if (totalPending > 1 || cleanBalance > 1 || safeBalance > 1) {
+                    const prognosePaDiv = document.createElement('div');
+                    const paDataText = `<b>Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b>`;
+
+                    applyStyles(prognosePaDiv, { fontSize: '14px', color: getColor(prognosePA / 100) });
+                    prognosePaDiv.innerHTML = `(${prognosePA.toFixed(2)}%)`;
+                    prognosePaDiv.classList.add('clickable');
+                    prognosePaDiv.dataset.text = paDataText;
+
+                    prognosePaDiv.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (prognosePaDiv.dataset.clicked === 'true') return;
+                        insertTextToComment(prognosePaDiv.dataset.text);
+                        prognosePaDiv.dataset.clicked = 'true';
+                        prognosePaDiv.style.opacity = '0.85';
+                    }, { once: false });
+
+                    prognosTarget.appendChild(prognosePaDiv);
+                }
+            }
+
+            await Promise.all(relatedResults.map(async (proj, index) => {
+                const projectName = proj.domain.split('.')[1];
+                const profit = proj.depositsTotal - proj.redeemsTotal;
+                const targetDivId = `inn-result-project-container-${projectName}`;
+
+                try {
+                    const targetDiv = await waitForElement(targetDivId, 7000);
+
+                    const profitHtml = ` <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, true, currencySymbol)}</span>`;
+                    const closingTagIndex = targetDiv.innerHTML.indexOf('</a>');
+                    if (closingTagIndex !== -1) {
+                        const newHtml = targetDiv.innerHTML.slice(0, closingTagIndex + 4) +
+                              profitHtml +
+                              targetDiv.innerHTML.slice(closingTagIndex + 4);
+                        targetDiv.innerHTML = newHtml;
+                    } else {
+                        targetDiv.innerHTML += profitHtml;
+                    }
+                } catch (error) {
+                    console.warn(`[handleCombinedProfit] ${error.message}. Using fallback.`);
+                    const relatedContainer = document.getElementById(`project-container-${projectName}`);
+                    if (relatedContainer) {
+                        const profitDiv = document.createElement('div');
+                        profitDiv.innerHTML = `<b>InOut:</b> <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, true, currencySymbol)}</span>`;
+                        relatedContainer.appendChild(profitDiv);
+                    }
+                }
+            }));
+
+            if (projectSearchWrapper) {
+                let personInOutDiv = projectSearchWrapper.querySelector('.person-inout-total');
+                if (!personInOutDiv) {
+                    personInOutDiv = document.createElement('div');
+                    personInOutDiv.className = 'person-inout-total';
+                    applyStyles(personInOutDiv, {
+                        textAlign: 'center',
+                        marginTop: '15px',
+                        paddingTop: '10px',
+                        fontWeight: 'bold',
+                        fontSize: '16px',
+                        width: '100%'
+                    });
+                    projectSearchWrapper.appendChild(personInOutDiv);
+                }
+                personInOutDiv.innerHTML = `Person InOut: <span style="color: ${getBalanceColor(totalProfit)}">${formatCurrency(totalProfit, showAmount, currencySymbol)}</span>`;
+            }
+
+        } catch (error) {
+            if (totalTarget) totalTarget.innerHTML = 'Error';
+            if (prognosTarget) prognosTarget.innerHTML = 'Error';
+            container.innerHTML = `<div style="color: red;">Ошибка: ${error.message}</div>`;
+        }
+    }
+
+    function waitForElement(id, timeout = 5000) {
+        return new Promise((resolve, reject) => {
+            const startTime = Date.now();
+            const interval = setInterval(() => {
+                const element = document.getElementById(id);
+                if (element) {
+                    clearInterval(interval);
+                    resolve(element);
+                } else if (Date.now() - startTime > timeout) {
+                    clearInterval(interval);
+                    reject(new Error(`Element "#${id}" not found within ${timeout}ms`));
+                }
+            }, 100);
+        });
+    }
+
+    function getBalanceColor(amount) {
+        return amount >= 0 ? 'green' : 'red';
+    }
+
+
+    function getPlayerInn() {
+        return new Promise((resolve, reject) => {
+            const scripts = Array.from(document.querySelectorAll('script'));
+            const credentialsScript = scripts.find(script =>
+                                                   script.textContent.includes('#credentials-info') && script.textContent.includes('/players/playerCredentials/show/')
+                                                  );
+            if (!credentialsScript) return reject(new Error('Скрипт с URL для ИНН не найден'));
+
+            const urlMatch = credentialsScript.textContent.match(/url:\s*['"]\/players\/playerCredentials\/show\/\d+\/['"]/);
+            if (!urlMatch) return reject(new Error('URL для ИНН не найден'));
+            const url = urlMatch[0].match(/['"]([^'"]+)['"]/)[1];
+
+            $.ajax({
+                url: url,
+                method: 'GET',
+                success: response => {
+                    const doc = new DOMParser().parseFromString(response, 'text/html');
+                    const innInput = doc.querySelector('#common_services_players_models_PlayerCredentials_inn');
+                    resolve(innInput?.value || null);
+                },
+                error: () => reject(new Error('Не удалось загрузить ИНН'))
+            });
+        });
+    }
+
+    function searchPlayerByInn(domain, inn) {
+        return new Promise(resolve => {
+            const url = `${domain}players/playersItems/search?PlayersSearchForm[inn]=${inn}`;
+            function handleRequest(currentUrl) {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: currentUrl,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    onload: response => {
+                        if (response.status === 301 || response.status === 302) {
+                            const redirectUrlMatch = response.responseHeaders.match(/location: (.+)/i);
+                            const redirectUrl = redirectUrlMatch ? redirectUrlMatch[1].trim() : null;
+                            if (redirectUrl) handleRequest(redirectUrl);
+                            else resolve(null);
+                        } else if (response.status === 200) {
+                            const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                            const playerRow = doc.querySelector('tr.even');
+                            if (playerRow) {
+                                const playerIdSpan = playerRow.querySelector('td span:not(.fa):not(.manager-names)');
+                                const playerId = playerIdSpan ? playerIdSpan.textContent.trim() : null;
+                                resolve(playerId ? { domain, playerId } : null);
+                            } else {
+                                resolve(null);
+                            }
+                        } else {
+                            resolve(null);
+                        }
+                    },
+                    onerror: () => resolve(null)
+                });
+            }
+            handleRequest(url);
+        });
+    }
+
+    function calculateTotalInOut(domain, playerId) {
+        return new Promise(resolve => {
+            const baseURL = `${domain}players/playersDetail/index/`;
+            // Видалити, коли задача Владонича зайде на всі проєкти
+            const tempFix = `PlayersDetailForm[login]=${encodeURIComponent(playerId)}&PlayersDetailForm[period]=2017.01.01+00:00:00+-+${getTomorrowDate()}+23:59:59&PlayersDetailForm[show_table]=1`
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: baseURL,
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                data: `backend_modules_players_models_PlayersDetailForm[login]=${encodeURIComponent(playerId)}&backend_modules_players_models_PlayersDetailForm[period]=2017.01.01+00:00:00+-+${getTomorrowDate()}+23:59:59&backend_modules_players_models_PlayersDetailForm[show_table]=1&${tempFix}`,
+                onload: response => {
+                    const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                    const table = doc.querySelector('.detail-view');
+                    let depositsTotal = 0, redeemsTotal = 0;
+                    if (table) {
+                        table.querySelectorAll('tr').forEach(row => {
+                            const key = row.querySelector('th')?.textContent.trim();
+                            const value = parseFloat(row.querySelector('td')?.textContent.trim().replace(/[^0-9.-]/g, '')) || 0;
+                            if (key === 'Deposits Total') depositsTotal = value;
+                            if (key === 'Redeems Total') redeemsTotal = value;
+                        });
+                    }
+                    resolve({ domain, depositsTotal, redeemsTotal, playerId });
+                },
+                onerror: () => resolve({ domain, depositsTotal: 0, redeemsTotal: 0, playerId })
+            });
+        });
+    }
+
+    function handleTotalInOutClick(container, { Balance, totalPending }) {
+        if (isProfitButtonClicked) return;
+        isProfitButtonClicked = true;
+
+        const loader = createLoader();
+        container.appendChild(loader);
+
+        const playerID = getPlayerID();
+        const baseURL = `${ProjectUrl}players/playersDetail/index/`;
+        // Видалити, коли задача Владонича зайде на всі проєкти
+        const tempFix = `PlayersDetailForm[login]=${encodeURIComponent(playerID)}&PlayersDetailForm[period]=2017.01.01+00:00:00+-+${getTomorrowDate()}+23:59:59&PlayersDetailForm[show_table]=1`
+        GM_xmlhttpRequest({
+            method: 'POST',
+            url: baseURL,
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            data: `backend_modules_players_models_PlayersDetailForm[login]=${encodeURIComponent(playerID)}&backend_modules_players_models_PlayersDetailForm[period]=2017.01.01+00:00:00+-+${getTomorrowDate()}+23:59:59&backend_modules_players_models_PlayersDetailForm[show_table]=1&${tempFix}`,
+            onload: response => {
+                container.removeChild(loader);
+                const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                const table = doc.querySelector('.detail-view');
+                if (!table) {
+                    container.innerHTML += 'Таблица с результатами не найдена.';
+                    return;
+                }
+
+                let depositsTotal = 0, redeemsTotal = 0;
+                table.querySelectorAll('tr').forEach(row => {
+                    const key = row.querySelector('th')?.textContent.trim();
+                    const value = parseFloat(row.querySelector('td')?.textContent.trim().replace(/[^0-9.-]/g, '')) || 0;
+                    if (key === 'Deposits Total') depositsTotal = value;
+                    if (key === 'Redeems Total') redeemsTotal = value;
+                });
+
+                const cleanBalance = parseFloat(Balance);
+                const safeBalance = getInnerBalanceValue();
+                const profit = depositsTotal - redeemsTotal;
+                const prognoseInOut = depositsTotal - (totalPending + redeemsTotal + cleanBalance + safeBalance);
+                const prognosePA = ((redeemsTotal + totalPending + cleanBalance + safeBalance) / depositsTotal) * 100;
+                const showAmount = GM_getValue(amountDisplayKey, true);
+                const currencySymbol = currencySymbols.get(getCurrency()) || '';
+
+                container.innerHTML = `
+                <div class="profit-section main-profit">
+                    <b class="clickable" data-text='<b>Total InOut: <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, showAmount, currencySymbol)}</span></b>'>
+                        Total InOut: <span style="color: ${getBalanceColor(profit)}">${formatCurrency(profit, showAmount, currencySymbol)}</span>
+                    </b><br>
+                    ${(totalPending > 1 || cleanBalance > 1 || safeBalance > 1) ? `
+                        <b class="clickable" data-text='<b>Prognose InOut: <span style="color: ${getBalanceColor(prognoseInOut)}">${formatCurrency(prognoseInOut, showAmount, currencySymbol)}</span></b>'>
+                            Prognose InOut: <span style="color: ${getBalanceColor(prognoseInOut)}">${formatCurrency(prognoseInOut, showAmount, currencySymbol)}</span>
+                        </b><br>
+                        <b class="clickable" data-text='<b>Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b>'>
+                            Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span>
+                        </b>
+                    ` : ''}
+                </div>
+            `;
+
+                container.querySelectorAll('.clickable').forEach(element => {
+                    element.addEventListener('click', () => {
+                        const formattedText = element.getAttribute('data-text');
+                        insertTextToComment(formattedText, false);
+                    });
+                });
+            },
+            onerror: error => {
+                container.removeChild(loader);
+                container.innerHTML += `Ошибка запроса: ${error.message}`;
+            }
+        });
+    }
+
+
+    function createLoader() {
+        const loader = document.createElement('div');
+        loader.innerHTML = '<i class="fa fa-spinner fa-spin" style="font-size: 24px; color: #2196F3;"></i>';
+
+        applyStyles(loader, {
+            height: '40px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+        });
+        return loader;
+    }
+
+    function getValueByLabel(doc, labelText) {
+        for (const row of doc.querySelectorAll('tr')) {
+            const th = row.querySelector('th');
+            const td = row.querySelector('td');
+            if (th?.textContent.trim() === labelText) return td?.textContent.trim().split('\n')[0].trim() || 'Не найдено';
+        }
+        return 'Не найдено';
+    }
+
+    function getFirstValueByLabel(labelText) {
+        for (const row of document.querySelectorAll('tr')) {
+            const th = row.querySelector('th');
+            const td = row.querySelector('td');
+            if (th?.textContent.trim() === labelText) return td?.textContent.trim().split('\n')[0].trim() || 'Не найдено';
+        }
+        return 'Не найдено';
+    }
+
+    function getAjaxUrl() {
+        const scripts = document.querySelectorAll('script');
+        for (const script of scripts) {
+            if (script.textContent.includes('#credentials-info')) {
+                const urlMatch = script.textContent.match(/url:\s*'([^']+)'/);
+                return urlMatch ? urlMatch[1] : null;
+            }
+        }
+        return null;
+    }
+
+    function addMessageToContainer(messageElement) {
+        const container = window.popupBox?.querySelector('.popup-text');
+
+        if (!container) {
+            console.warn('addMessageToContainer: .popup-text container not found.');
+            return;
+        }
+
+        if (!container.dataset.hasBorder) {
+            applyStyles(container, {
+                paddingTop: '4px',
+                borderTop: '2px dashed #ccc'
+            });
+            container.dataset.hasBorder = 'true';
+        }
+
+        container.appendChild(messageElement);
+    }
+
+    function createClickableMessage(id, content, onClick, customStyles = {}) {
+        const message = document.createElement('div');
+        if (id) message.id = id;
+
+        applyStyles(message, {
+            ...MESSAGE_STYLES,
+            cursor: 'pointer',
+            ...customStyles
+        });
+
+        message.innerHTML = content;
+        message.onclick = onClick;
+        return message;
+    }
+
+    async function updatePopupBox({ balanceAfterBonus, withdrawAmount, bonusId, bonusText, withdrawId, withdrawText, bonusAmount, bonusDate, index }) {
+        if (!window.popupBox) {
+            console.error('Попап не существует');
+            return;
+        }
+
+        const content = `Можливе порушення BTR:<br>${bonusDate}<br>відіграв ${balanceAfterBonus}₴, виводить ${withdrawAmount}₴`;
+        const onClick = () => {
+            const textToInsert = `
+#<b>${bonusId} | ${bonusText} | ${bonusAmount}₴ | ${balanceAfterBonus}₴<br>
+#${withdrawId} | ${withdrawText} | ${withdrawAmount}₴</b>`;
+            console.log('Inserting text:', textToInsert);
+            insertTextIntoField(textToInsert);
+        };
+
+        const message = createClickableMessage(
+            `popup-clickable-text-${index}`,
+            content,
+            onClick,
+            { color: 'red' }
+        );
+        addMessageToContainer(message);
+    }
+
+    function showBonusViolationMessage({ bonusId, dateStr, index, count }) {
+        const content = `Бонус ${bonusId} присвоєно більше ${count} разів за день ${dateStr}`;
+        const onClick = () => insertTextIntoField(`#<b>Бонус ${bonusId} присвоєно більше ${count} разів за день ${dateStr}</b>`);
+
+        addMessageToContainer(createClickableMessage(
+            `popup-bonus-violation-${index}`,
+            content,
+            onClick,
+            { color: 'orange' }
+        ));
+    }
+
+    function showBRP({ totalDeposits, bonusWithDeposits, bonusDepositPercentage }) {
+        if (bonusDepositPercentage > 40) {
+            const brpWarning = document.createElement('div');
+            brpWarning.id = 'brp-warning-msg';
+
+            applyStyles(brpWarning, {
+                fontWeight: 'bold',
+                padding: '5px',
+                textAlign: 'center',
+                marginBottom: '5px',
+                color: 'red'
+            });
+
+            brpWarning.innerHTML = `High BRP: ${bonusDepositPercentage.toFixed(2)}%`;
+            brpWarning.title = `Кількість депозитів: ${totalDeposits}\nБонусів з депозитом: ${bonusWithDeposits}`;
+
+            addMessageToContainer(brpWarning);
+        }
+    }
+
+    function showVerificationCards(cards) {
+        const container = document.getElementById('header-verification-container');
+
+        if (!container) {
+            console.error('Контейнер для карточек в хедере не найден');
+            return;
+        }
+
+        if (!cards || !Array.isArray(cards) || cards.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        const cardsHtml = cards.map(card => `
+        <div style="display: inline-block; margin: 2px 0; font-size: 16px;">
+            <span style="font-family: monospace;">${card}</span>
+            <button onclick="navigator.clipboard.writeText('${card.replace(/'/g, "\\'")}')"
+                    style="border: none; background: none; cursor: pointer; padding: 0 2px; color: #666;">
+                <span class="fa fa-files-o"></span>
+            </button>
+        </div>
+    `).join('<br>');
+
+        container.innerHTML = `<b style="font-size: 12px;">Картки для верифікації:</b><br>${cardsHtml}`;
+    }
+
+    function getLastBetValue() {
+        const headers = document.querySelectorAll('th');
+        for (let th of headers) {
+            if (th.textContent.includes('Последняя ставка')) {
+                const td = th.nextElementSibling;
+                if (td) {
+                    return td.textContent.trim();
+                }
+            }
+        }
+        return 'Не заданий';
+    }
+
+
+    function showVerificationProvider(provider) {
+        const kycTarget = document.getElementById('verification-provider-target');
+        if (!kycTarget) {
+            console.warn('Елемент #verification-provider-target не знайдено');
+            return;
+        }
+
+        let displayProvider = provider;
+        let color = 'green';
+
+        if (!displayProvider) {
+            const lastBet = getLastBetValue();
+
+            if (lastBet !== 'Не заданий') {
+                displayProvider = 'Manual';
+            }
+        }
+
+        if (!displayProvider) {
+            kycTarget.innerHTML = '---';
+            kycTarget.style.color = '#888';
+            kycTarget.style.fontWeight = 'normal';
+            return;
+        }
+
+        const firstWord = displayProvider.split(' ')[0];
+
+        if (firstWord === 'Kycaid' || firstWord === 'SumSub' || firstWord === 'Manual') {
+            color = 'red';
+        } else {
+            color = 'green';
+        }
+
+        kycTarget.innerHTML = firstWord;
+        kycTarget.style.color = color;
+        kycTarget.style.fontWeight = 'bold';
+    }
+
+    async function fetchTransactionData(url) {
+        const response = await new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url,
+                onload: resolve,
+                onerror: reject
+            });
+        });
+        return new DOMParser().parseFromString(response.responseText, 'text/html');
+    }
+
+    async function fetchDetailedTransactionData(url, formData) {
+        const response = await new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url,
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                data: new URLSearchParams(formData).toString(),
+                onload: resolve,
+                onerror: reject
+            });
+        });
+        return new DOMParser().parseFromString(response.responseText, 'text/html');
+    }
+
+    function processTransactionRow(row, state) {
+        const cells = row.querySelectorAll('td');
+        if (cells.length === 0) return;
+
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - 30);
+
+        const actionType = cells[1]?.textContent.trim() || '';
+        const bonusInfo = cells[7]?.textContent.trim() || '';
+
+        const dateMatch = cells[6]?.textContent.trim().match(/^(\d{2}\/\d{2}\/\d{4})/);
+        const dateStr = dateMatch ? dateMatch[1] : '';
+
+        let isRecent = false;
+        if (dateMatch) {
+            const parts = dateStr.split('/');
+            const rowDate = new Date(parts[2], parts[1] - 1, parts[0]);
+            isRecent = rowDate >= cutoffDate;
+        }
+
+        if (actionType.includes('Вывод средств')) {
+            state.withdrawAmount = parseFloat(cells[2]?.textContent.replace('-', '').replace(',', '.') || '0');
+            state.totalWithdrawAmount += state.withdrawAmount;
+            state.withdrawId = cells[0]?.textContent.trim() || '';
+            state.withdrawText = bonusInfo;
+            state.waitingForBonus = true;
+
+        } else if (['Ввод средств', 'Purchase', 'Возврат средств', 'Отмена вывода средств'].some(t => actionType.includes(t))) {
+            state.withdrawAmount = 0;
+            state.balanceAfterBonus = 0;
+            state.waitingForBonus = false;
+            state.totalWithdrawAmount = 0;
+
+            if (actionType.includes('Ввод средств')) {
+                state.totalDeposits++;
+            }
+
+        } else if (actionType.includes('Ручное начисление баланса')) {
+            const amount = parseFloat(cells[2]?.textContent.replace(',', '.') || '0');
+            if (amount > 1 && state.manualBalanceCount < 3) {
+                showManualBalance({ dateStr, bonusInfo, index: state.manualBalanceCount++ });
+            }
+        } else if (actionType.includes('Отыгрывание бонуса') && state.waitingForBonus) {
+            state.bonusAmount = parseFloat(cells[2]?.textContent.replace(',', '.') || '0');
+            state.balanceAfterBonus = parseFloat(cells[3]?.textContent.replace(',', '.') || '0');
+            state.bonusId = cells[0]?.textContent.trim() || '';
+            state.bonusText = bonusInfo;
+            state.bonusDate = dateStr;
+
+            if (isRecent && state.totalWithdrawAmount > state.balanceAfterBonus && state.messageCount < 2) {
+                updatePopupBox({ ...state, index: state.messageCount++ });
+            }
+            state.waitingForBonus = false;
+
+        } else if (['Bonus assignment', 'Присвоение бонуса', 'Активация бонуса'].some(t => actionType.includes(t))) {
+            if (bonusInfo.match(/платеж № (\d+)/)) {
+                state.bonusWithDeposits++;
+            }
+
+            const bonusIdMatch = bonusInfo.match(/№ (\d+)/);
+            if (bonusIdMatch) {
+                const bonusId = bonusIdMatch[1];
+                state.bonusAssignments[bonusId] = state.bonusAssignments[bonusId] || {};
+                state.bonusAssignments[bonusId][dateStr] = (state.bonusAssignments[bonusId][dateStr] || 0) + 1;
+            }
+        }
+    }
+
+    function processBonusViolations(state) {
+        const violations = [];
+
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - 30);
+
+        for (const bonusId in state.bonusAssignments) {
+            const dates = state.bonusAssignments[bonusId];
+
+            for (const dateStr in dates) {
+                const parts = dateStr.split('/');
+                const rowDate = new Date(parts[2], parts[1] - 1, parts[0]);
+
+                if (rowDate < cutoffDate) {
+                    continue;
+                }
+
+                const count = dates[dateStr];
+                const key = `${bonusId}_${dateStr}`;
+
+                if (count >= 3 && !state.displayedMessages[key]) {
+                    violations.push({ bonusId, dateStr, count, key });
+                }
+            }
+        }
+
+        violations.sort((a, b) => {
+            const parseDate = str => {
+                const p = str.split('/');
+                return new Date(p[2], p[1] - 1, p[0]);
+            };
+            return parseDate(b.dateStr) - parseDate(a.dateStr);
+        });
+
+        for (const v of violations.slice(0, 2)) {
+            showBonusViolationMessage({
+                bonusId: v.bonusId,
+                dateStr: v.dateStr,
+                index: state.messageCount++,
+                count: v.count
+            });
+            state.displayedMessages[v.key] = true;
+        }
+    }
+
+
+    function showManualBalance({ dateStr, bonusInfo, index }) {
+        if (!window.popupBox) {
+            console.error('Попап не существует');
+            return;
+        }
+
+        const message = document.createElement('div');
+        applyStyles(message, { ...MESSAGE_STYLES, color: 'blue' });
+        message.innerHTML = `<center><span id="popup-manual-balance-${index}">${bonusInfo} | ${dateStr}</span></center>`;
+        addMessageToContainer(message);
+    }
+
+    async function fetchAndProcessData() {
+        const project = getProject();
+        const url = `${ProjectUrl}players/playersItems/transactionLog/${userId}/`;
+        console.log('Запрос данных по URL:', url);
+
+        try {
+            const initialDoc = await fetchTransactionData(url);
+            const formData = new FormData();
+            formData.append('pageSize', '10000');
+            const doc = await fetchDetailedTransactionData(url, formData);
+
+            const currencySymbol = currencySymbols.get(getCurrency()) || '';
+            const showAmount = GM_getValue(amountDisplayKey, true);
+
+            const state = {
+                withdrawAmount: 0,
+                manualBalanceCount: 0,
+                balanceAfterBonus: 0,
+                bonusAmount: 0,
+                waitingForBonus: false,
+                bonusId: '',
+                bonusText: '',
+                withdrawId: '',
+                withdrawText: '',
+                bonusDate: '',
+                totalDeposits: 0,
+                bonusWithDeposits: 0,
+                totalWithdrawAmount: 0,
+                messageCount: 0,
+                bonusAssignments: {},
+                displayedMessages: {},
+                totalDepositAmountLast30Days: 0,
+            };
+
+            doc.querySelectorAll('tr').forEach(row => processTransactionRow(row, state));
+
+            processBonusViolations(state);
+
+            if (state.totalDeposits > 0) {
+                const bonusDepositPercentage = (state.bonusWithDeposits / state.totalDeposits) * 100;
+                console.log(`Загальна кількість депозитів: ${state.totalDeposits}, Бонусів з депозитом: ${state.bonusWithDeposits}, BRP: ${bonusDepositPercentage.toFixed(2)}%`);
+                showBRP({ totalDeposits: state.totalDeposits, bonusWithDeposits: state.bonusWithDeposits, bonusDepositPercentage });
+            } else {
+                console.log('Депозити відсутні.');
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки данных:', error);
+        }
+    }
+
+    async function fetchPaymentsData({ searchLogin, includePending = false }) {
+        const url = `${ProjectUrl}payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${searchLogin}&newPageSize=2000`;
+        try {
+            const response = await new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url,
+                    onload: resolve,
+                    onerror: reject
+                });
+            });
+
+            const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+
+            const allCardsSet = new Set();
+            const displayCardsSet = new Set();
+            let totalPending = 0;
+
+            doc.querySelectorAll('tr').forEach(row => {
+                const cardLabelSpecific = row.querySelector('td:nth-child(10) span.label[style="background-color: #8D8A8E"]');
+                if (cardLabelSpecific?.textContent.trim()) {
+                    displayCardsSet.add(cardLabelSpecific.textContent.trim());
+                }
+
+                const cardLabel = row.querySelector('td:nth-child(10)');
+                if (cardLabel?.textContent.trim()) {
+                    allCardsSet.add(cardLabel.textContent.trim());
+                }
+
+                if (includePending) {
+                    const statusSpan = row.querySelector('span.label');
+                    const status = statusSpan?.textContent.trim();
+                    if (['pending', 'review', 'on_hold'].includes(status)) {
+                        const amountText = row.querySelector('td:nth-child(5) code')?.textContent.trim().replace('UAH', '').replace(',', '.') || '0';
+                        totalPending += parseFloat(amountText) || 0;
+                    }
+                }
+            });
+
+            const allCards = Array.from(allCardsSet);
+            const displayCards = Array.from(displayCardsSet);
+            return includePending
+                ? { totalPending, cards: allCards, displayCards }
+            : { cards: allCards, displayCards };
+        } catch (error) {
+            console.error('Ошибка загрузки данных:', error);
+            throw error;
+        }
+    }
+    async function fetchAndProcessPending() {
+        return fetchPaymentsData({ searchLogin: getPlayerID(), includePending: true });
+    }
+
+    async function fetchAllCards() {
+        const result = await fetchPaymentsData({ searchLogin: getPlayerID() });
+        console.log('Fetched cards:', result.cards);
+        return result;
+    }
+
+    function createOrUpdatePopup(message, isLoading = false) {
+        let popup = document.getElementById('balance-log-analyzer-popup');
+
+        if (!popup) {
+            popup = document.createElement('div');
+            popup.id = 'balance-log-analyzer-popup';
+            popup.style.position = 'fixed';
+            popup.style.top = '10px';
+            popup.style.right = '10px';
+            popup.style.padding = '10px';
+            popup.style.backgroundColor = 'white';
+            popup.style.border = '1px solid black';
+            popup.style.zIndex = '10000';
+            popup.style.boxShadow = '0px 0px 10px rgba(0, 0, 0, 0.5)';
+            popup.style.borderRadius = '5px';
+            document.body.appendChild(popup);
+        }
+
+        popup.innerHTML = `
+        <div style="font-size: 14px; margin-bottom: 10px;">${message}</div>
+        ${isLoading ? '<div class="loader"></div>' : ''}
+    `;
+
+        const links = popup.querySelectorAll('a[data-round-id]');
+        links.forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const roundId = this.getAttribute('data-round-id');
+                scrollToRound(roundId);
+            });
+        });
+
+        const toggleButtons = popup.querySelectorAll('.toggle-button');
+        toggleButtons.forEach(button => {
+            button.addEventListener('click', function(event) {
+                const content = this.nextElementSibling;
+                if (content.style.display === 'none') {
+                    content.style.display = 'block';
+                    this.textContent = '▼';
+                } else {
+                    content.style.display = 'none';
+                    this.textContent = '►';
+                }
+            });
+        });
+
+        if (isLoading) {
+            let style = document.getElementById('balance-log-analyzer-popup-style');
+            if (!style) {
+                style = document.createElement('style');
+                style.id = 'balance-log-analyzer-popup-style';
+                style.innerHTML = `
+                .loader {
+                    border: 4px solid #f3f3f3;
+                    border-top: 4px solid #3498db;
+                    border-radius: 50%;
+                    width: 20px;
+                    height: 20px;
+                    animation: spin 2s linear infinite;
+                }
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            `;
+                document.head.appendChild(style);
+            }
+        }
+    }
+
+
+    function checkMultipleBets(data) {
+        const gameBets = {};
+
+        data.forEach(entry => {
+            if (entry.type === 'Bet') {
+                if (!gameBets[entry.game]) {
+                    gameBets[entry.game] = [];
+                }
+                gameBets[entry.game].push(entry);
+            }
+        });
+
+        const alerts = [];
+
+        for (const game in gameBets) {
+            const bets = gameBets[game];
+            let currentPeriod = [];
+            let previousGame = null;
+
+            bets.forEach(bet => {
+                if (bet.game === previousGame) {
+                    currentPeriod.push(bet);
+                } else {
+                    if (currentPeriod.length >= 1000) {
+                        alerts.push(currentPeriod[0]);
+                        alerts.push(currentPeriod[currentPeriod.length - 1]);
+                    }
+                    currentPeriod = [bet];
+                }
+                previousGame = bet.game;
+            });
+
+            if (currentPeriod.length >= 1000) {
+                alerts.push(currentPeriod[0]);
+                alerts.push(currentPeriod[currentPeriod.length - 1]);
+            }
+        }
+
+        return alerts;
+    }
+
+
+
+    function checkAnomalousBetIncreases(data) {
+        const gameBets = {};
+
+        data.forEach(entry => {
+            if (entry.type === 'Bet') {
+                if (!gameBets[entry.game]) {
+                    gameBets[entry.game] = [];
+                }
+                gameBets[entry.game].push(entry);
+            }
+        });
+
+        const alerts = [];
+
+        for (const game in gameBets) {
+            let bets = gameBets[game];
+            let previousBet = null;
+
+            for (let i = bets.length - 1; i >= 0; i--) {
+                const bet = bets[i];
+                if (previousBet && previousBet.amount < 0 && Math.abs(bet.amount) > Math.abs(previousBet.amount) * 500) {
+                    alerts.push({ previousBet, bet });
+                }
+                previousBet = bet;
+            }
+        }
+        return alerts;
+    }
+
+
+
+    function scrollToRound(roundId) {
+        const targetElements = document.querySelectorAll('tr td span.label.label-default');
+
+        let targetElement = null;
+
+        targetElements.forEach(element => {
+            if (element.textContent.trim() === roundId) {
+                targetElement = element;
+                element.closest('tr').style.backgroundColor = '#e0b3ff';
+            }
+        });
+
+        if (targetElement) {
+            targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+            console.warn(`Element with round ID ${roundId} not found.`);
+        }
+    }
+
+    function setPageSize() {
+        let selectElement = document.getElementById('pageSize');
+        if (!selectElement) {
+            console.error('Select element not found');
+            return;
+        }
+
+        let option = document.createElement('option');
+        option.value = '35000';
+        option.text = '35000';
+        selectElement.appendChild(option);
+        selectElement.value = '35000';
+        selectElement.dispatchEvent(new Event('change'));
+    }
+
+    function setPageSize1k() {
+        let selectElement = document.getElementById('newPageSize');
+        if (!selectElement) {
+            console.error('Select element not found');
+            return;
+        }
+
+        let option = document.createElement('option');
+        option.value = '500';
+        option.text = '500';
+        selectElement.appendChild(option);
+        selectElement.value = '500';
+        selectElement.dispatchEvent(new Event('change'));
+    }
+
+    function waitForDataLoad() {
+        return new Promise(resolve => {
+            setTimeout(resolve, 10000);
+        });
+    }
+
+    function analyzeTable() {
+        let rows = document.querySelectorAll('table tr');
+
+        let data = [];
+        rows.forEach(row => {
+            let cells = row.querySelectorAll('td');
+
+            if (cells.length >= 10) {
+                let date = cells[0].innerText.trim();
+                let provider = cells[1].innerText.trim();
+                let game = cells[2].innerText.trim();
+                let type = cells[3].innerText.trim();
+                let amount = parseFloat(cells[4].innerText.trim().replace(/\s/g, '').replace(',', '.'));
+                let balance = parseFloat(cells[5].innerText.trim().replace(/\s/g, '').replace(',', '.'));
+                let details = cells[6].innerText.trim();
+                let round_type = cells[8].innerText.trim();
+                let round_id = cells[9].innerText.trim();
+                let balance_id = cells[10].innerText.trim();
+
+                if (type === 'Bet') {
+                    data.push({
+                        date,
+                        provider,
+                        game,
+                        type,
+                        amount,
+                        balance,
+                        details,
+                        round_type,
+                        round_id,
+                        balance_id
+                    });
+                } else if (type === 'WIN') {
+                    data.push({
+                        date,
+                        provider,
+                        game,
+                        type,
+                        amount,
+                        balance,
+                        details,
+                        round_type,
+                        round_id,
+                        balance_id
+                    });
+                }
+            } else {
+                console.warn('Row skipped due to insufficient cells:', row);
+            }
+        });
+
+        return data;
+    }
+
+    function checkRoundIntervals(data) {
+        const roundData = {};
+        let pending_balance = 0;
+
+        const excludedProviders = ['pragmatic', 'riverslot', 'booming-games', 'endorphina', 'pateplay'];
+
+        data.forEach(entry => {
+            const round_id = entry.round_id;
+            console.log(entry.provider)
+            if (entry.provider && excludedProviders.includes(entry.provider.toLowerCase())) {
+                return;
+            }
+
+            if (!roundData[round_id]) {
+                roundData[round_id] = { bet: null, win: null };
+            }
+            if (entry.type === 'Bet' && Math.abs(entry.amount) > 1000) {
+                roundData[round_id].bet = entry;
+            } else if (entry.type === 'WIN') {
+                roundData[round_id].win = entry;
+            }
+        });
+
+        const alerts = [];
+        const pendingRounds = [];
+
+        for (const round_id in roundData) {
+            const { bet, win } = roundData[round_id];
+
+            if (bet && win) {
+                const betDate = new Date(bet.date);
+                const winDate = new Date(win.date);
+                const diffMinutes = (winDate - betDate) / 1000 / 60;
+
+                if (diffMinutes > 5) {
+                    alerts.push({
+                        round_id,
+                        game: bet.game,
+                        amount: bet.amount,
+                        balance: bet.balance,
+                        date: bet.date
+                    });
+                }
+            } else if (bet && !win && Math.abs(bet.amount) >= 50000) {
+                pendingRounds.push({
+                    round_id,
+                    game: bet.game,
+                    amount: bet.amount,
+                    balance: bet.balance,
+                    date: bet.date
+                });
+                pending_balance += Math.abs(bet.amount);
+            }
+        }
+
+        return {
+            delayedRounds: alerts,
+            pendingRounds: pendingRounds,
+            pendingBalance: pending_balance
+        };
+    }
+
+    function checkLargeBets(data) {
+        const largeBets = data.filter(entry =>
+                                      entry.type === 'Bet' &&
+                                      (
+            (entry.balance > 1 && Math.abs(entry.amount) > 0.25 * entry.balance && Math.abs(entry.amount) > 1000) ||
+            (entry.balance === 0	 && Math.abs(entry.amount) > 1000)
+        )
+                                     );
+        return largeBets;
+    }
+
+    function createScrollableContent(items) {
+        const content = `
+        <div style="
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            margin-top: 10px;
+            display: none;
+        " class="scrollable-content">
+            ${items.map(item => `
+                <div style="
+                    border-bottom: 1px solid #ddd;
+                    padding-bottom: 10px;
+                    margin-bottom: 10px;
+                ">
+                    ${item.message ? item.message : `
+                    <strong>Round ID:</strong> <a href="#" data-round-id="${item.round_id}">${item.round_id}</a><br>
+                    <strong>Game:</strong> ${item.game}<br>
+                    <strong>Bet Amount:</strong> ${item.amount}<br>
+                    <strong>Balance:</strong> ${item.balance}<br>
+                    <strong>Date:</strong> ${item.date}<br>
+                    ${item.type ? `<strong>Type:</strong> ${item.type}<br>` : ''}
+                    `}
+                </div>
+            `).join('')}
+        </div>
+    `;
+        return content;
+    }
+
+    function formatRoundData(roundData) {
+        const formattedItems = [];
+
+        roundData.delayedRounds.forEach(item => {
+            formattedItems.push({
+                ...item,
+                type: 'Delayed (> 5 min)'
+            });
+        });
+
+        roundData.pendingRounds.forEach(item => {
+            formattedItems.push({
+                ...item,
+                type: 'Pending (no win)'
+            });
+        });
+
+        if (roundData.pendingBalance > 0) {
+            formattedItems.push({
+                message: `<strong>Загальна сума відкладених ставок:</strong> ${roundData.pendingBalance}`
+            });
+        }
+
+        return formattedItems;
+    }
+
+    function toggleContentVisibility(event) {
+        const button = event.target;
+        const content = button.nextElementSibling;
+
+        if (content.style.display === 'none') {
+            content.style.display = 'block';
+            button.textContent = '▼';
+        } else {
+            content.style.display = 'none';
+            button.textContent = '►';
+        }
+    }
+
+
+    function calculateBetsByRoundType(data) {
+        const results = {};
+
+        data.forEach(entry => {
+            if (entry.type === 'Bet' && entry.amount < 0) {
+                if (!results[entry.game]) {
+                    results[entry.game] = { bonusBets: 0, realBets: 0 };
+                }
+
+                if (entry.round_type === 'bonus') {
+                    results[entry.game].bonusBets += Math.abs(entry.amount);
+                } else if (entry.round_type === 'real') {
+                    results[entry.game].realBets += Math.abs(entry.amount);
+                }
+            }
+        });
+
+        return results;
+    }
+
+    function calculateWinsByRoundType(data) {
+        const results = {};
+
+        data.forEach(entry => {
+            if (entry.type === 'WIN' && entry.amount > 0) {
+                if (!results[entry.game]) {
+                    results[entry.game] = { bonus: 0, real: 0 };
+                }
+
+                if (entry.round_type === 'bonus') {
+                    results[entry.game].bonus += entry.amount;
+                } else if (entry.round_type === 'real') {
+                    results[entry.game].real += entry.amount;
+                }
+            }
+        });
+
+        return results;
+    }
+
+    async function mainBalance() {
+        createOrUpdatePopup('<b>Зачекай, будь ласка, аналізую інформацію...</b>', true);
+        setPageSize();
+        await waitForDataLoad();
+        createOrUpdatePopup('<b>Я повністю готовий до роботи.</b>');
+
+        const data = analyzeTable();
+
+        const roundData = checkRoundIntervals(data);
+        const largeBetAlerts = checkLargeBets(data);
+        const winResults = calculateWinsByRoundType(data);
+        const betResults = calculateBetsByRoundType(data);
+        const multipleBetsAlerts = checkMultipleBets(data);
+        const anomalousBetIncreasesAlerts = checkAnomalousBetIncreases(data);
+
+        let message = '';
+
+        console.log(largeBetAlerts);
+        console.log(anomalousBetIncreasesAlerts);
+
+        if (roundData.delayedRounds.length > 0 || roundData.pendingRounds.length > 0) {
+            message += `
+        <b>Знайдено можливі відкладені раунди:</b>
+        <button class="toggle-button" onclick="toggleContentVisibility(event)">►</button>
+        ${createScrollableContent(formatRoundData(roundData))}
+        <br>
+    `;
+        } else {
+            message += '<b>Відкладених раундів не знайдено</b><br>';
+        }
+
+        if (largeBetAlerts.length > 0) {
+            message += `
+        <b>Знайдено ставки, що перевищують 25% від балансу:</b>
+        <button class="toggle-button" onclick="toggleContentVisibility(event)">►</button>
+        ${createScrollableContent(largeBetAlerts)}
+        <br>
+    `;
+        } else {
+            message += '<b>Великих ставок не знайдено</b><br>';
+        }
+
+        if (multipleBetsAlerts.length > 0) {
+            message += `
+        <b>Знайдено більше 1000 ставок в одній грі:</b>
+        <button class="toggle-button" onclick="toggleContentVisibility(event)">►</button>
+        ${createScrollableContent(multipleBetsAlerts)}
+        <br>
+    `;
+        } else {
+            message += '<b>Більше 1000 ставок не знайдено</b><br>';
+        }
+
+        if (anomalousBetIncreasesAlerts.length > 0) {
+            message += `
+        <b>Знайдено аномальні зростання ставок:</b>
+        <button class="toggle-button" onclick="toggleContentVisibility(event)">►</button>
+        ${createScrollableContent(anomalousBetIncreasesAlerts.map(alert => ({
+                ...alert.previousBet,
+                amount: `Previous: ${alert.previousBet.amount}, Current: ${alert.bet.amount}`
+            })))}
+        <br>
+    `;
+        } else {
+            message += '<b>Аномальних зростань ставок не знайдено</b><br>';
+        }
+
+        for (const game in winResults) {
+            const winResult = winResults[game];
+            const betResult = betResults[game] || { bonusBets: 0, realBets: 0 };
+            const ggrBonus = betResult.bonusBets - winResult.bonus;
+            const ggrReal = betResult.realBets - winResult.real;
+
+            if (ggrReal < -1000) {
+                if (ggrBonus !== 0 && ggrReal < ggrBonus) {
+                    const percentageReal = ((ggrReal / ggrBonus) * 100).toFixed(2);
+                    if (percentageReal < 0) {
+                        let messageForGame = `
+                    <b style="color: purple;">GGR:</b><br>
+                    <b>Гра:</b> ${game}<br>
+                    <b>Сума виграшів bonus:</b> ${winResult.bonus.toFixed(2)}<br>
+                    <b>Сума виграшів real:</b> ${winResult.real.toFixed(2)}<br>
+                    <b>Сума ставок bonus:</b> ${betResult.bonusBets.toFixed(2)}<br>
+                    <b>Сума ставок real:</b> ${betResult.realBets.toFixed(2)}<br>
+                    <b>GGR REAL:</b> ${ggrReal.toFixed(2)}<br>
+                    <b>GGR BONUS:</b> ${ggrBonus.toFixed(2)}<br>
+                    <b>Процент GGR REAL по відношенню до GGR BONUS:</b> ${percentageReal}%<br>
+                `;
+                        message += `
+                    <b>Деталі GGR:</b>
+                    <button class="toggle-button" onclick="toggleContentVisibility(event)">►</button>
+                    ${createScrollableContent([{ game: game, message: messageForGame }])}
+                    <br>
+                `;
+                    }
+                    else {
+                        message += '<b>GGR в нормі</b><br>';
+                    }
+                }
+            }
+        }
+
+        createOrUpdatePopup(message, false);
+    }
+
+    function observeDOMChanges(nameFunction) {
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach(mutation => {
+                if (mutation.type === 'childList') {
+                    nameFunction();
+                }
+            });
+        });
+
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+    }
+
+    var buttonImageUrl = 'https://i.ibb.co/LzhGhY2/image-removebg-preview.png';
+
+    function createFloatingButton(imageUrl) {
+        var button = document.createElement('div');
+        button.style.position = 'fixed';
+        button.style.top = '10px';
+        button.style.right = '10px';
+        button.style.width = '105px';
+        button.style.height = '105px';
+        button.style.backgroundImage = 'url(' + imageUrl + ')';
+        button.style.backgroundSize = 'cover';
+        button.style.zIndex = '9999';
+        button.style.cursor = 'pointer';
+
+        document.body.appendChild(button);
+
+        button.addEventListener('click', function() {
+            mainBalance();
+            button.remove();
+        });
+    }
+
+    function buttonToSave() {
+        const button = document.querySelector('.btn-update-comment-antifraud_manager');
+        const textarea = document.querySelector('#PlayersComments_comment_antifraud_manager');
+
+        const initials = GM_getValue(initialsKey, '');
+        const currentDate = getCurrentDate();
+        const playerID = getPlayerID();
+        const project = getProject();
+        const url = window.location.href;
+
+        if (button) {
+            button.addEventListener('click', () => {
+                const lines = textarea.value.split('<br>');
+                const firstLine = lines[0];
+                const secondLine = lines[1];
+                const dateRegex = /^\d{2}\.\d{2}\.\d{4}/;
+
+                if (dateRegex.test(firstLine) && firstLine.includes(currentDate) && firstLine.includes(initials)) {
+                    const dataToInsert = {
+                        date: currentDate,
+                        url: url,
+                        project: project,
+                        playerID: playerID,
+                        initials: initials,
+                        comment: textarea.value.replace(/\r?\n/g, ""),
+                    };
+
+                    if (secondLine.includes('автовыплату') || secondLine.includes('автовиплату')) {
+                        dataToInsert.autopayment = 1;
+                    } else {
+                        dataToInsert.autopayment = 0;
+                    }
+
+
+                    console.log(dataToInsert)
+                    sendDataToServer(dataToInsert, token)
+                        .then(response => {
+                        console.log('Data sent successfully:', response);
+                    })
+                        .catch(err => {
+                        console.error('Error sending data:', err);
+                    });
+                } else {
+                    console.log("The first line of the comment does not contain today's date or correct initials.");
+                }
+            });
+        } else {
+            console.error("Button not found.");
+        }
+    }
+
+    async function sendDataToServer(data, accessToken) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/working`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                },
+                body: JSON.stringify(data)
+            });
+
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error('Error:', error);
+            throw error;
+        }
+    }
+
+    function getInOutUrl() {
+        for (const script of document.querySelectorAll('script')) {
+            if (script.textContent.includes('#show-player-in-out')) {
+                const urlMatch = script.textContent.match(/url:\s*'([^']+)'/);
+                return urlMatch ? urlMatch[1] : null;
+            }
+        }
+        return null;
+    }
+
+    async function fetchData(url, options = {}) {
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json', ...options.headers },
+                credentials: options.credentials || 'same-origin'
+            });
+            if (!response.ok) {
+                if (response.status === 404) {
+                    console.warn(`HTTP 404 for ${url}, returning default values`);
+                    return null;
+                }
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+        } catch (error) {
+            if (error.message.includes('404')) {
+                console.warn(`Fetch error (404) for ${url}, returning default values`);
+                return null;
+            }
+            throw error;
+        }
+    }
+
+    async function handlePopup() {
+        try {
+            const inOutUrl = getInOutUrl();
+            if (!inOutUrl) {
+                console.log('Не удалось найти URL для запроса inOut.');
+                return;
+            }
+
+            const [inOutData, balanceData] = await Promise.all([
+                fetchData(inOutUrl),
+                fetchData(`${ProjectUrl}payments/paymentTaxes/balanceAfter/?playerId=${userId}`, {
+                    headers: { 'accept': '*/*', 'x-requested-with': 'XMLHttpRequest' },
+                    credentials: 'include'
+                })
+            ]);
+
+            const params = {
+                MonthPA: inOutData?.monthInOut ?? '−',
+                TotalPA: inOutData?.totalInOut ?? '−',
+                Balance: getBalance(),
+                SafeBalance: getInnerBalanceValue(),
+                NDFL: balanceData?.balance_after ?? '0'
+            };
+
+            const { isCheckedToday } = await checkUserInChecklist();
+            params.isCheckedToday = isCheckedToday;
+            const { totalPending, cards, displayCards } = await fetchAndProcessPending();
+            Object.assign(params, { totalPending, cards, displayCards });
+
+            await createPopupBox(params);
+            showVerificationCards(displayCards);
+
+            await fetchAndProcessData();
+
+            verificationProvider()
+                .then(provider => {
+                showVerificationProvider(provider);
+            })
+                .catch(error => {
+                console.error('Ошибка при получении KYC провайдера:', error);
+                showVerificationProvider(null);
+            });
+
+            if (typeof addCheckButton === 'function') {
+                addCheckButton(params.TotalPA, params.Balance, params.totalPending);
+            }
+        } catch (error) {
+            console.error('Ошибка при выполнении handlePopup:', error.message);
+        }
+    }
+
+    async function handlePopupWildWinz() {
+        try {
+            const inOutUrl = getInOutUrl();
+            if (!inOutUrl) {
+                console.log('Не удалось найти URL для запроса inOut.');
+                return;
+            }
+
+            const [inOutData, balanceData] = await Promise.all([
+                fetchData(inOutUrl),
+                fetchData(`${ProjectUrl}payments/paymentTaxes/balanceAfter/?playerId=${userId}`, {
+                    headers: { 'accept': '*/*', 'x-requested-with': 'XMLHttpRequest' },
+                    credentials: 'include'
+                })
+            ]);
+
+            const params = {
+                MonthPA: inOutData?.monthInOut ?? '−',
+                TotalPA: inOutData?.totalInOut ?? '−',
+                Balance: getBalance(),
+                NDFL: balanceData?.balance_after ?? '0'
+            };
+
+            const { isCheckedToday } = await checkUserInChecklist();
+            params.isCheckedToday = isCheckedToday;
+            const { totalPending, cards } = await fetchAndProcessPending();
+            Object.assign(params, { totalPending, cards });
+            await createPopupBox(params);
+            await fetchAndProcessData();
+            if (typeof addCheckButton === 'function') {
+                addCheckButton(params.TotalPA, params.Balance, params.totalPending);
+            }
+        } catch (error) {
+            console.error('Ошибка при выполнении handlePopupWildWinz:', error.message);
+        }
+    }
+
+    async function checkToken() {
+        if (!token) {
+            return { success: false };
+        }
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/check_token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token })
+            });
+
+            if (!response.ok) {
+                return { success: false };
+            }
+
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Помилка перевірки токену:', error);
+            return { success: false };
+        }
+    }
+
+    function createLoginForm() {
+        const form = document.createElement('div');
+        form.innerHTML = `
+        <style>
+            #login-form {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: #f2f2f2;
+                padding: 20px;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                font-family: Arial, sans-serif;
+                z-index: 9999;
+            }
+            #login-form h2 {
+                margin-bottom: 15px;
+                font-size: 22px;
+                text-align: center;
+            }
+            #login-form input[type="text"],
+            #login-form input[type="password"] {
+                width: 100%;
+                padding: 10px;
+                margin-bottom: 10px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                box-sizing: border-box;
+                font-size: 16px;
+            }
+            #login-form button {
+                width: 100%;
+                padding: 10px;
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 16px;
+            }
+            #login-form button:hover {
+                background-color: #45a049;
+            }
+            #login-form .error {
+                color: red;
+                margin-top: 10px;
+                text-align: center;
+            }
+        </style>
+        <div id="login-form">
+            <h2>Авторизація</h2>
+            <input type="text" id="username" placeholder="Логін" required />
+            <input type="password" id="password" placeholder="Пароль" required />
+            <button id="login-btn">Увійти</button>
+            <div class="error" id="error-msg"></div>
+        </div>
+    `;
+
+        document.body.appendChild(form);
+
+        document.getElementById('login-btn').addEventListener('click', async () => {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            const { success, token } = await authenticate(username, password);
+
+            if (success) {
+                GM_setValue('authToken', token);
+                alert('Авторизація успішна!');
+                form.remove();
+                window.location.reload();
+            } else {
+                document.getElementById('error-msg').textContent = 'Неправильний логін або пароль';
+            }
+        });
+    }
+
+    async function authenticate(username, password) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/auth`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ username, password }),
+                credentials: 'include'
+            });
+
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Error:', error);
+            return { success: false };
+        }
+    }
+
+    let highlightedValues = [], managerMap = {};
+    const managerColors = {
+        "Максим Рудий": "red", "Аліна Панасюк": "blue",
+        "Максим Умєренников": "green", "Максим Кислий": "orange",
+        "Максим Кириченко": "purple", "Олександр Загоруйко": "pink",
+        "Олександр Ярославцев": "magenta"
+    };
+
+    async function powerBIfetchHighlightedValues() {
+        const sheetName = powerBIgetSheetName(), today = new Date().toISOString().split('T')[0];
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/powerbi/get?sheet_name=${encodeURIComponent(sheetName)}`);
+            if (response.ok) {
+                const data = await response.json();
+                highlightedValues = data.filter(item => item.date === today).map(item => item.player_id);
+                managerMap = Object.fromEntries(data.map(item => [item.player_id, item.manager_initials]));
+                powerBIhighlightSavedCells();
+            }
+        } catch {}
+    }
+
+    async function powerBIsaveHighlightedValue(cellValue) {
+
+        try {
+            await fetch(`${API_BASE_URL}/api/powerbi/add`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ player_id: cellValue, date: new Date().toISOString().split('T')[0], sheet_name: powerBIgetSheetName() })
+            });
+        } catch {}
+    }
+
+    async function powerBIdeleteHighlightedValue(cellValue) {
+        try {
+            await fetch(`${API_BASE_URL}/api/powerbi/delete`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player_id: cellValue, sheet_name: powerBIgetSheetName() })
+            });
+        } catch {}
+    }
+
+    function powerBIapplyStylesToCell(cell, manager) {
+        const color = managerColors[manager] || 'purple';
+        cell.style.setProperty('background-color', color, 'important');
+        cell.style.setProperty('color', 'white', 'important');
+    }
+
+    function powerBIhighlightSavedCells() {
+        document.querySelectorAll('div[role="gridcell"]').forEach(cell => {
+            const cellValue = cell.textContent.trim();
+            if (highlightedValues.includes(cellValue)) {
+                powerBIapplyStylesToCell(cell, managerMap[cellValue]);
+            }
+        });
+
+        document.querySelectorAll('div[role="rowheader"]').forEach(header => {
+            const headerValue = header.textContent.trim();
+            if (highlightedValues.includes(headerValue)) {
+                powerBIapplyStylesToCell(header, managerMap[headerValue]);
+            }
+        });
+    }
+
+    function powerBImakeCellsClickable() {
+        document.querySelectorAll('div[role="gridcell"]').forEach(cell => {
+            if (!cell.classList.contains('clickable-cell')) {
+                cell.classList.add('clickable-cell');
+                cell.style.cursor = 'pointer';
+                cell.addEventListener('click', function() {
+                    const cellValue = cell.textContent.trim();
+                    if (highlightedValues.includes(cellValue)) {
+                        highlightedValues = highlightedValues.filter(value => value !== cellValue);
+                        cell.style.removeProperty('background-color');
+                        cell.style.removeProperty('color');
+                        powerBIdeleteHighlightedValue(cellValue);
+                    } else {
+                        highlightedValues.push(cellValue);
+                        powerBIapplyStylesToCell(cell, managerMap[cellValue]);
+                        powerBIsaveHighlightedValue(cellValue);
+                    }
+                });
+            }
+        });
+
+        document.querySelectorAll('div[role="rowheader"]').forEach(header => {
+            if (!header.classList.contains('clickable-header')) {
+                header.classList.add('clickable-header');
+                header.style.cursor = 'pointer';
+                header.addEventListener('click', function() {
+                    const headerValue = header.textContent.trim();
+                    if (highlightedValues.includes(headerValue)) {
+                        highlightedValues = highlightedValues.filter(value => value !== headerValue);
+                        header.style.removeProperty('background-color');
+                        header.style.removeProperty('color');
+                        powerBIdeleteHighlightedValue(headerValue);
+                    } else {
+                        highlightedValues.push(headerValue);
+                        powerBIapplyStylesToCell(header, managerMap[headerValue]);
+                        powerBIsaveHighlightedValue(headerValue);
+                    }
+                });
+            }
+        });
+    }
+
+
+    function powerBIgetSheetName() {
+        const sheetNameElement = document.querySelector('span[role="heading"][aria-level="1"]');
+        return sheetNameElement ? sheetNameElement.textContent.trim() : 'Невідомий лист';
+    }
+
+
+    async function sendActivePageInfo() {
+
+        const currentUrl = window.location.href;
+
+        if (token) {
+            await fetch(`${API_BASE_URL}/api/update_active_page`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ url: currentUrl })
+            });
+        }
+    }
+
+    async function sendPlayerSeenInfo() {
+        const currentUrl = window.location.href;
+        const project = getProject();
+        const date = new Date();
+        const formattedDate = `${date.getDate().toString().padStart(2, '0')}.${(date.getMonth() + 1).toString().padStart(2, '0')}.${date.getFullYear()} ${getCurrentTime()}`;
+
+        if (!currentUrl.includes('/playersItems/update') && !currentUrl.includes('/user/')) {
+            return;
+        }
+
+        if (token) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/seen`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        url: currentUrl,
+                        user_id: getPlayerID(),
+                        project: project,
+                        date: formattedDate
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    console.log('Ти молодчинка!');
+                } else {
+                    console.error('Failed to record player view:', result.message);
+                }
+            } catch (error) {
+                console.error('Error sending player seen info:', error);
+            }
+        } else {
+            console.warn('No auth token found');
+        }
+    }
+
+    async function activeUrlsManagers() {
+        const playerId = getPlayerID();
+
+        const currentManager = managerData.name;
+
+        const table = document.querySelector('.detail-view.table.table-striped');
+        let targetElement = null;
+        let rowElement = null;
+
+        if (table) {
+            targetElement = table.querySelector('tr td span.fa');
+            if (targetElement) {
+                rowElement = targetElement.closest('tr');
+                rowElement.style.backgroundColor = '#f8f8d9';
+
+                let existingSpan = targetElement.parentNode.querySelector('.manager-names');
+                if (!existingSpan) {
+                    existingSpan = document.createElement('span');
+                    existingSpan.className = 'manager-names';
+                    existingSpan.style.fontWeight = 'bold';
+                    existingSpan.style.color = '#007BFF';
+                    existingSpan.style.marginLeft = '10px';
+                    existingSpan.style.userSelect = 'none';
+                    targetElement.parentNode.appendChild(existingSpan);
+                }
+                existingSpan.textContent = `Переглядають: ${currentManager}`;
+
+                createStickyRow(rowElement, table);
+            }
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/get_active_users`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+            const data = await response.json();
+
+            const activeUsers = data.filter(user =>
+                                            (user.active_url.includes(playerId) || user.active_url.includes(userId)) &&
+                                            user.manager_name !== currentManager
+                                           );
+
+            if (activeUsers.length > 0 && table && targetElement) {
+                const otherManagers = activeUsers.map(user => user.manager_name).join(', ');
+                const updatedManagerNames = `${currentManager}, ${otherManagers}`;
+                const existingSpan = targetElement.parentNode.querySelector('.manager-names');
+                if (existingSpan) {
+                    existingSpan.textContent = `Переглядають: ${updatedManagerNames}`;
+                }
+            }
+        } catch (error) {
+            console.error('Ошибка запроса:', error);
+        }
+    }
+
+    function createStickyRow(originalRow, table) {
+        if (!originalRow) return;
+
+        if (window.stickyRow) window.stickyRow.remove();
+
+        const stickyRow = document.createElement('tr');
+        stickyRow.id = "stickyRow";
+        stickyRow.className = originalRow.className;
+        stickyRow.style.position = 'fixed';
+        stickyRow.style.top = '0px';
+        stickyRow.style.left = `${table.getBoundingClientRect().left}px`;
+        stickyRow.style.width = `${table.offsetWidth}px`;
+        stickyRow.style.backgroundColor = window.getComputedStyle(originalRow).backgroundColor;
+        stickyRow.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
+        stickyRow.style.zIndex = '1000';
+        stickyRow.style.display = 'none';
+        stickyRow.style.whiteSpace = 'nowrap';
+
+
+        [...originalRow.children].forEach(cell => {
+            const newCell = document.createElement(cell.tagName.toLowerCase());
+            newCell.innerHTML = cell.innerHTML;
+            newCell.style.whiteSpace = 'nowrap';
+            newCell.style.padding = '8px';
+            stickyRow.appendChild(newCell);
+        });
+
+        document.body.appendChild(stickyRow);
+        window.stickyRow = stickyRow;
+
+        document.addEventListener('scroll', () => toggleStickyRow(originalRow, stickyRow, table));
+        window.addEventListener('resize', () => updateStickyRowPosition(stickyRow, table));
+
+        syncCopyButton(originalRow, stickyRow);
+    }
+
+    function toggleStickyRow(originalRow, stickyRow, table) {
+        const rect = originalRow.getBoundingClientRect();
+        const tableRect = table.getBoundingClientRect();
+
+        if (rect.top < 0 && tableRect.bottom > 0) {
+            stickyRow.style.display = 'table-row';
+            stickyRow.style.top = `${Math.max(0, tableRect.top)}px`;
+            stickyRow.style.left = `${tableRect.left}px`;
+            stickyRow.style.width = `${table.offsetWidth}px`;
+        } else {
+            stickyRow.style.display = 'none';
+        }
+    }
+
+    function syncCopyButton(originalRow, stickyRow) {
+        const originalCopyBtn = originalRow.querySelector('.fa-files-o');
+        const stickyCopyBtn = stickyRow.querySelector('.fa-files-o');
+
+        if (!originalCopyBtn || !stickyCopyBtn) return;
+
+        function handleCopyClick(event) {
+            event.preventDefault();
+            const dataForCopy = originalCopyBtn.getAttribute('data-for-copy');
+
+            if (!dataForCopy) return;
+
+            navigator.clipboard.writeText(dataForCopy).then(() => {
+                originalCopyBtn.outerHTML = `<span class="" data-for-copy="${dataForCopy}">Copied!</span>`;
+                stickyCopyBtn.outerHTML = `<span class="" data-for-copy="${dataForCopy}">Copied!</span>`;
+            }).catch(err => console.error('Ошибка копирования:', err));
+        }
+
+        originalCopyBtn.addEventListener('click', handleCopyClick);
+        stickyCopyBtn.addEventListener('click', handleCopyClick);
+    }
+
+    function updateStickyRowPosition(stickyRow, table) {
+        const tableRect = table.getBoundingClientRect();
+        stickyRow.style.left = `${tableRect.left}px`;
+        stickyRow.style.width = `${table.offsetWidth}px`;
+    }
+
+    function changeCardStatus() {
+        const container = document.querySelector('#payments-cards-masks-parent');
+        const rows = container.querySelectorAll('tr.odd, tr.even');
+        const table = document.querySelector('.items');
+
+        ensureHeaders(table);
+
+        rows.forEach((row) => {
+            if (row.dataset.processed === "true") return;
+
+            const statusCell = row.querySelector('td input.payment-cards-masks-change-status');
+            const markerCell = row.querySelector('.payment-cards-masks-marker');
+            const checkbox = row.querySelector('td input[type="checkbox"][name="paymentTokenEnabled"]');
+
+            if (statusCell && markerCell && statusCell.value === 'Не проверена') {
+                addIconCells(row, statusCell, markerCell, checkbox);
+            } else {
+                const emptyCell1 = document.createElement('td');
+                const emptyCell2 = document.createElement('td');
+                emptyCell1.innerHTML = '&nbsp;';
+                emptyCell2.innerHTML = '&nbsp;';
+                row.appendChild(emptyCell1);
+                row.appendChild(emptyCell2);
+            }
+
+            row.dataset.processed = "true";
+        });
+    }
+
+    function ensureHeaders(table) {
+        const headerRow = table.querySelector('thead tr');
+        const hasHeader = Array.from(headerRow.querySelectorAll('th')).some(
+            (cell) => cell.textContent.trim() === 'Чужая'
+        );
+
+        if (!hasHeader) {
+            ['Чужая', 'Своя'].forEach((text) => {
+                const headerCell = document.createElement('th');
+                headerCell.textContent = text;
+                headerRow.appendChild(headerCell);
+            });
+        }
+    }
+
+    function createCellWithIcon(type, statusCell, markerCell, checkbox = null) {
+        const cell = document.createElement('td');
+        if (type === 'other' || type === 'own') {
+            const icon = document.createElement('i');
+            icon.className = type === 'other' ? 'fa fa-ban' : 'fa fa-check';
+            icon.style = `
+            cursor: pointer;
+            margin: 0 auto;
+            font-size: 12px;
+            padding: 4.5px 5px;
+            border: 2px solid ${type === 'other' ? 'red' : 'green'};
+            border-radius: 3px;
+            background-color: ${type === 'other' ? 'red' : 'green'};
+            color: ${type === 'other' ? 'yellow' : 'white'};
+            text-align: center;
+        `;
+
+            icon.addEventListener('click', (e) => {
+                e.preventDefault();
+                const status = type === 'other' ? 'other_person_card' : 'verified';
+                const newValue = type === 'other' ? 'Чужая' : 'Верифицирована';
+                const color = type === 'other' ? '#D9534F' : '#5CB85C';
+
+                handleIconClick(statusCell, markerCell, checkbox, icon, status, newValue, color);
+            });
+
+            cell.appendChild(icon);
+        }
+        else {
+            cell.innerHTML = '&nbsp;';
+        }
+
+        return cell;
+    }
+
+
+    function handleIconClick(statusCell, markerCell, checkbox, icon, status, newValue, color) {
+        const url = statusCell.getAttribute('data-url');
+        if (!url) return alert('Ошибка: Не удалось найти URL для смены статуса.');
+
+        fetch(url, {
+            headers: {
+                "accept": "*/*",
+                "content-type": "application/json",
+                "x-requested-with": "XMLHttpRequest"
+            },
+            method: "POST",
+            body: JSON.stringify({ status }),
+        })
+            .then(response => response.ok ? response.text() : Promise.reject(response))
+            .then(() => {
+            statusCell.value = newValue;
+            markerCell.style.backgroundColor = color;
+            icon.remove();
+
+            if (checkbox && status === 'other_person_card' && checkbox.checked) {
+                handleCheckboxRequest(checkbox);
+            }
+        })
+            .catch(err => console.error(err));
+    }
+
+    function handleCheckboxRequest(checkbox) {
+        const url = checkbox.getAttribute('data-url');
+        if (!url) return alert('Ошибка: Не удалось найти URL для чекбокса.');
+
+        fetch(url, {
+            headers: {
+                "accept": "*/*",
+                "content-type": "application/json",
+                "x-requested-with": "XMLHttpRequest"
+            },
+            method: "POST"
+        })
+            .then(response => {
+            if (!response.ok) {
+                throw new Error(`Ошибка: ${response.status} ${response.statusText}`);
+            }
+            return response.text();
+        })
+            .then((text) => {
+            if (text) {
+                try {
+                    const data = JSON.parse(text);
+                    console.log('Ответ для чекбокса:', data);
+                } catch {
+                    console.warn('Ответ для чекбокса не является JSON:', text);
+                }
+            } else {
+                console.warn('Пустой ответ для чекбокса');
+            }
+
+            checkbox.checked = false;
+        })
+            .catch(err => alert('Ошибка запроса для чекбокса: ' + err.message));
+    }
+
+    function addIconCells(row, statusCell, markerCell, checkbox) {
+        const otherCell = createCellWithIcon('other', statusCell, markerCell, checkbox);
+        const ownCell = createCellWithIcon('own', statusCell, markerCell);
+
+        row.appendChild(otherCell);
+        row.appendChild(ownCell);
+    }
+
+    function createCheckIPButton() {
+        const checkIPButton = document.createElement('button');
+        checkIPButton.textContent = 'Check IP';
+        checkIPButton.classList.add('btn', 'btn-primary');
+
+        checkIPButton.addEventListener('click', removeNAPlayersAndEmptyBlocks);
+
+        const firstAlert = document.querySelector('.alert.alert-warning');
+        if (firstAlert) {
+            firstAlert.parentNode.insertBefore(checkIPButton, firstAlert);
+        }
+    }
+
+    const parseDate = dateString => {
+        const [day, month, year, ...timeParts] = dateString.split(' ');
+        const monthNumber = months[month] || null;
+        if (!monthNumber) return null;
+        const formattedDate = `${year}-${monthNumber}-${day}T${timeParts.join(' ')}`;
+        return new Date(formattedDate);
+    };
+
+    const processPlayerCard = (card, firstThreeLetters, ownerCards, oneWeekAgo) => {
+        const content = card.getAttribute('data-content');
+        if (content.includes('имя: n/a')) {
+            card.parentElement.remove();
+            return;
+        }
+
+        const cardNameMatch = content.match(/имя: ([^<]+)/);
+        if (cardNameMatch) {
+            const surnameFromCard = cardNameMatch[1].split(' ')[2]?.toLowerCase();
+            if (surnameFromCard?.startsWith(firstThreeLetters)) {
+                colorCard(card, 'purple');
+            }
+        }
+
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: card.querySelector('a').href,
+            onload: function(response) {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = response.responseText;
+
+                const targetCards = [...tempDiv.querySelectorAll('#payments-cards-masks-grid tbody tr td:nth-child(2) strong')].map(c => c.textContent.trim());
+                const lastActiveDateStr = [...tempDiv.querySelectorAll('tr')].find(row => row.querySelector('th')?.textContent.trim() === 'Последнее изменение баланса')?.querySelector('td')?.textContent.trim();
+                const lastActiveDatePlayer = lastActiveDateStr ? parseDate(lastActiveDateStr) : null;
+
+                if (lastActiveDatePlayer >= oneWeekAgo) colorCard(card, 'orange');
+                if (targetCards.some(c => ownerCards.includes(c))) colorCard(card, 'brown');
+                const alertSuccessLink = card.querySelector('a.alert-success');
+                if (alertSuccessLink) {
+                    card.parentElement.remove();
+                }
+            }
+        });
+    };
+
+    const colorCard = (card, color) => {
+        card.querySelectorAll('.alert-success').forEach(link => {
+            link.classList.remove('alert-success');
+            link.style.color = 'white';
+            link.style.backgroundColor = color;
+        });
+        card.style.backgroundColor = color;
+    };
+
+    const removeNAPlayersAndEmptyBlocks = () => {
+        document.querySelectorAll('.ajax-load-more').forEach(button => {
+            button.click();
+        });
+
+        setTimeout(() => {
+            const playerCards = document.querySelectorAll('.player_card');
+            let firstThreeLetters = '';
+            let lastActiveDate;
+
+            document.querySelectorAll('tr').forEach(row => {
+                const header = row.querySelector('th');
+                const cell = row.querySelector('td');
+                if (header && header.textContent.trim() === 'Фамилия' && cell) {
+                    firstThreeLetters = cell.textContent.trim().slice(0, 4).toLowerCase();
+                }
+            });
+
+            const ownerCards = [...document.querySelectorAll('#payments-cards-masks-grid tbody tr td:nth-child(2) strong')].map(cell => cell.textContent.trim());
+            const oneWeekAgo = new Date(new Date().setDate(new Date().getDate() - 3));
+
+            playerCards.forEach(card => processPlayerCard(card, firstThreeLetters, ownerCards, oneWeekAgo));
+        }, 2000);
+    };
+
+    function checkAutoPayment() {
+        const checkbox = document.getElementById('Players_enabled_autopayouts');
+        if (!checkbox) return console.error('Checkbox element not found.');
+
+        let currentValue = checkbox.checked;
+
+        if (!currentValue) return;
+
+        const checkInterval = setInterval(() => {
+            const newValue = checkbox.checked;
+            if (!newValue) {
+
+
+                const time = getCurrentTime();
+                const currentLanguage = GM_getValue(languageKey, 'російська');
+
+                const fieldDate = getDateFromField();
+                const today = getCurrentDate();
+
+                let insertText = '';
+                if (currentLanguage === 'українська') {
+                    insertText = `Вимкнув автовиплату в ${time}`;
+                } else {
+                    insertText = `Отключил автовыплату в ${time}`;
+                }
+                insertTextToComment(insertText, true);
+                clearInterval(checkInterval);
+            }
+        }, 500);
+
+        window.addEventListener('beforeunload', () => clearInterval(checkInterval));
+    }
+
+    function checkBonusButton() {
+        const checkbox = document.getElementById('Players_no_bonus');
+        if (!checkbox) return console.error('Checkbox element not found.');
+
+        let currentValue = checkbox.checked;
+
+        if (currentValue) return;
+
+        const checkInterval = setInterval(() => {
+            const newValue = checkbox.checked;
+            if (newValue) {
+                const time = getCurrentTime();
+                const currentLanguage = GM_getValue(languageKey, 'російська');
+
+                const fieldDate = getDateFromField();
+                const today = getCurrentDate();
+
+                let insertText = '';
+                if (currentLanguage === 'українська') {
+                    insertText = `Відключив бонуси в ${time}`;
+                } else {
+                    insertText = `Отключил бонусы в ${time}`;
+                }
+                insertTextToComment(insertText, true);
+                clearInterval(checkInterval);
+            }
+        }, 500);
+
+        window.addEventListener('beforeunload', () => clearInterval(checkInterval));
+    }
+
+
+    async function updateBanButton() {
+        const updateButton = document.getElementById('yw2');
+        if (!updateButton) return;
+
+        updateButton.addEventListener('click', (event) => handleBanButtonClick(event, updateButton));
+    }
+
+    async function handleBanButtonClick(event, updateButton) {
+        event.preventDefault();
+
+        let verificationSheets;
+
+        try {
+            const settings = await ApiService.fetchData('/get_settings?alert_type=Verification');
+            verificationSheets = settings.sheets || { Betking: '', '777': '', Vegas: '' };
+        } catch (error) {
+            console.error('Ошибка загрузки настроек верификации:', error);
+            verificationSheets = { Betking: '', '777': '', Vegas: '' };
+        }
+
+        const { status, inactiveReason, playerID } = getBanStatus();
+        if (!shouldSendToVerification(status, inactiveReason)) {
+            updateButton.form.submit();
+            return;
+        }
+
+        const shouldProceed = await confirmLawyerVerification();
+        if (!shouldProceed) {
+            updateButton.form.submit();
+            return;
+        };
+
+        const reason = await selectVerificationReason();
+        if (!reason) return;
+
+        await processBanVerification(playerID, reason, updateButton, verificationSheets);
+    }
+
+    function getBanStatus() {
+        const statusInput = document.querySelector('input[name="Players[status]"]');
+        const reasonInput = document.querySelector('input[name="Players[inactive_reason]"]');
+        return {
+            status: statusInput?.value || '',
+            inactiveReason: reasonInput?.value || '',
+            playerID: getPlayerID()
+        };
+    }
+
+    function shouldSendToVerification(status, inactiveReason) {
+        return status === 'UNCONFIRMED' &&
+            (inactiveReason === 'VIOLATION_RULES' || inactiveReason === 'VIOLATION_RULES_FRAUD');
+    }
+
+    function confirmLawyerVerification() {
+        return Swal.fire({
+            title: 'Ви бажаєте відправити гравця на верифікацію по схемі юриста?',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Так',
+            cancelButtonText: 'Ні'
+        }).then(result => result.isConfirmed);
+    }
+
+    function selectVerificationReason() {
+        const reasons = [
+            'Після рефанду використовує чужу картку',
+            'Підозра на малолітнього',
+            'Підозра на Лудомана',
+            'Схемщик/потенц. фрод',
+            'Більше двох чужих карток в місяць',
+            'Картка родича, неприбутковий',
+            'Недоцільні транзакції',
+            'Картковий фрод',
+            'Фін претензія',
+            'Cascad'
+        ];
+
+        return Swal.fire({
+            title: 'Виберіть причину:',
+            html: `
+            <style>
+                .swal2-select {
+                    width: 80%;
+                    padding: 10px;
+                    font-size: 16px;
+                    box-sizing: border-box;
+                    border: 1px solid #ccc;
+                    border-radius: 4px;
+                    background-color: #fff;
+                    overflow-x: hidden;
+                }
+                .swal2-select option {
+                    white-space: nowrap;
+                    padding: 5px 10px;
+                }
+            </style>
+            <select id="reasonSelect" class="swal2-select">
+                <option value="">Виберіть причину</option>
+                ${reasons.map(r => `<option value="${r}">${r}</option>`).join('')}
+            </select>
+        `,
+            width: '350px',
+            showCancelButton: true,
+            confirmButtonText: 'Підтвердити',
+            cancelButtonText: 'Відміна',
+            preConfirm: () => {
+                const selectedReason = document.getElementById('reasonSelect').value;
+                if (!selectedReason) {
+                    Swal.showValidationMessage('Будь ласка, виберіть причину!');
+                    return false;
+                }
+                return selectedReason;
+            }
+        }).then(result => result.isConfirmed ? result.value : null);
+    }
+
+    async function processBanVerification(playerID, reason, updateButton, verificationSheets) {
+        const project = getProject();
+        const sheetName = getSheetNameForProject(project, verificationSheets);
+        const { name, email } = await gatherPlayerData();
+        const currentDate = getCurrentDate();
+        const initials = GM_getValue(initialsKey);
+        try {
+            const accessToken = await getAccessToken();
+            const dataToInsert = {
+                url: window.location.href,
+                playerID,
+                date: null,
+                name,
+                email,
+                department: 'Anti Fraud',
+                reason
+            };
+
+            await sendDataToGoogleSheet(accessToken, sheetName, dataToInsert);
+            await updateCommentField(currentDate, initials, updateButton);
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Успішно!',
+                text: 'Гравця відправлено на верифікацію.'
+            });
+        } catch (error) {
+            console.error('Ошибка при верификации:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Помилка',
+                text: 'Не вдалося відправити дані.'
+            });
+        }
+    }
+
+    async function updateCommentField(currentDate, initials, updateButton) {
+        const message = `<strong style="color: purple;">${currentDate} | Відправляємо на верифікацію по схемі юриста | ${initials} </strong><br><br>`;
+        const commentField = document.getElementById('gateway-method-description-visible-antifraud_manager');
+        if (!commentField) throw new Error('Поле комментария не найдено');
+
+        commentField.innerHTML = message + commentField.innerHTML;
+        commentField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+
+        const updateCommentButton = document.querySelector('.btn-update-comment-antifraud_manager');
+        if (updateCommentButton) {
+            updateCommentButton.click();
+            await new Promise(resolve => setTimeout(resolve, 1500));
+        }
+        updateButton.form.submit();
+    }
+
+    async function checkForUpdates() {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/version`);
+            const data = await response.json();
+
+            if (data.version && currentVersion !== data.version) {
+                const style = document.createElement("style");
+                style.textContent = `
+                #update-icon {
+                    position: fixed;
+                    width: 200px;
+                    height: 250px;
+                    z-index: 1000;
+                    cursor: pointer;
+                    transition: top 0.3s ease, left 0.3s ease;
+                }
+            `;
+                document.head.appendChild(style);
+
+                const img = document.createElement("img");
+                img.src = 'https://i.pinimg.com/originals/91/b1/ca/91b1ca6fdbfd199856cb5300e21e85dc.gif';
+                img.id = "update-icon";
+                document.body.appendChild(img);
+
+                img.addEventListener("click", () => {
+                    window.open("https://github.com/Defou1t322/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js", "_blank");
+                });
+
+                function moveIconSmoothly() {
+                    const x = Math.floor(Math.random() * (window.innerWidth - 50));
+                    const y = Math.floor(Math.random() * (window.innerHeight - 50));
+
+                    img.style.left = `${x}px`;
+                    img.style.top = `${y}px`;
+
+                    setTimeout(moveIconSmoothly, 900);
+                }
+
+                moveIconSmoothly();
+            }
+        } catch (error) {
+            console.error("Ошибка при проверке версии:", error);
+        }
+    }
+
+    const SETTINGS_SECTIONS = {
+        Pendings: 'pendings-settings',
+        PayOut: 'payout-settings',
+        Deposits: 'deposits-settings',
+        Verification: 'verification-settings'
+    };
+
+    const ALERT_CONFIG = {
+        Pendings: {
+            fields: {
+                priorities: { type: 'multi-select', selector: 'pendings-priority-select', required: true },
+                total_amount: { type: 'text', selector: 'pendings-total-amount', required: true, validate: v => /^\d+$/.test(v) },
+                manager: { type: 'text', selector: 'pendings-manager-input', required: true }
+            },
+            apiFields: ['priorities', 'amount', 'manager'],
+            requiresProject: true
+        },
+        PayOut: {
+            fields: {
+                priorities: { type: 'multi-select', selector: 'payout-priority-select', required: true },
+                total_amount: { type: 'text', selector: 'payout-total-amount', required: true, validate: v => /^\d+$/.test(v) },
+                auto_disable: { type: 'checkbox', selector: 'payout-auto-disable' },
+                manager: { type: 'text', selector: 'payout-manager-input', required: true }
+            },
+            apiFields: ['priorities', 'amount', 'auto_disable', 'manager'],
+            requiresProject: true
+        },
+        Deposits: {
+            fields: {
+                settings: {
+                    type: 'custom',
+                    selector: '.deposit-priority-item',
+                    parse: () => Array.from(document.querySelectorAll('.deposit-priority-item')).map(item => ({
+                        priority: item.querySelector('.priority-label').textContent.trim(),
+                        amount: item.querySelector('.amount-input').value.trim(),
+                        bonusAmount: item.querySelector('.bonus-input').value.trim(),
+                        cards: Array.from(item.querySelector('.card-select').selectedOptions).map(opt => opt.value)
+                    })),
+                    validate: settings => settings.every(s => /^\d+$/.test(s.amount) && /^\d+$/.test(s.bonusAmount))
+                },
+                inefficient_transaction_percent: { type: 'text', selector: 'inefficient-transaction-percent', required: true, validate: v => /^\d+%$/.test(v) },
+                manager: { type: 'text', selector: 'deposits-manager-input', required: true }
+            },
+            apiFields: ['settings', 'inefficient_transaction_percent', 'manager'],
+            requiresProject: true
+        },
+        Verification: {
+            fields: {
+                sheets: {
+                    type: 'custom',
+                    selector: '.verification-sheet-input',
+                    parse: () => ({
+                        Betking: document.getElementById('verification-betking-sheet').value.trim(),
+                        '777': document.getElementById('verification-777-sheet').value.trim(),
+                        Vegas: document.getElementById('verification-vegas-sheet').value.trim()
+                    }),
+                    validate: sheets => Object.values(sheets).every(v => v.length > 0)
+                }
+            },
+            apiFields: ['sheets'],
+            requiresProject: false
+        }
+    };
+
+    const byId = (selector) => document.getElementById(selector);
+    const hideAllSections = () => Object.values(SETTINGS_SECTIONS).forEach(id => byId(id).style.display = 'none');
+    const showSection = (section) => byId(section).style.display = 'block';
+    const setMessage = (type, text) => {
+        const errorMsg = byId('alert-error-msg');
+        const successMsg = byId('alert-success-msg');
+        if (type === 'error') {
+            errorMsg.textContent = text;
+            successMsg.textContent = '';
+        } else {
+            successMsg.textContent = text;
+            errorMsg.textContent = '';
+        }
+    };
+
+    class ApiService {
+        static async fetchData(endpoint, options = {}) {
+
+            const defaultHeaders = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+            try {
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+                    ...options,
+                    headers: { ...defaultHeaders, ...options.headers }
+                });
+                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status} - ${await response.text()}`);
+                return await response.json();
+            } catch (error) {
+                throw new Error(`Fetch error: ${error.message}`);
+            }
+        }
+    }
+
+    class SettingsManager {
+        static priorities = ["Приоритет 1", "Приоритет 2", "Приоритет 3", "Приоритет 4", "Приоритет 5", "Приоритет 6", "Приоритет 7", "Приоритет 8", "n/a"];
+
+        constructor(alertType) {
+            this.alertType = alertType;
+            this.config = ALERT_CONFIG[alertType];
+            this.section = SETTINGS_SECTIONS[alertType];
+        }
+
+        async loadSettings(project) {
+            try {
+                const endpoint = this.config.requiresProject
+                ? `/get_settings?alert_type=${this.alertType}&project=${project}`
+                : `/get_settings?alert_type=${this.alertType}`;
+                const data = await ApiService.fetchData(endpoint);
+                this.parseSettings(data);
+            } catch (error) {
+                console.error('Ошибка загрузки настроек:', error);
+                setMessage('error', 'Не вдалося завантажити налаштування');
+            }
+        }
+
+        parseSettings(data) {
+            Object.entries(this.config.fields).forEach(([key, field]) => {
+                if (field.type === 'multi-select') {
+                    const element = byId(field.selector);
+                    element.innerHTML = '';
+                    SettingsManager.priorities.forEach(priority => {
+                        const option = document.createElement('option');
+                        option.value = option.textContent = priority;
+                        if (data.priorities?.includes(priority)) option.classList.add('selected');
+                        option.addEventListener('click', () => option.classList.toggle('selected'));
+                        element.appendChild(option);
+                    });
+                } else if (field.type === 'text') {
+                    const element = byId(field.selector);
+                    if (key === 'total_amount') {
+                        element.value = data.amount !== undefined ? data.amount : '';
+                    } else if (key === 'inefficient_transaction_percent') {
+                        element.value = data[key] ? `${data[key] * 100}%` : '';
+                    } else {
+                        element.value = data[key] || '';
+                    }
+                } else if (field.type === 'checkbox') {
+                    byId(field.selector).checked = data[key] === true;
+                } else if (field.type === 'select') {
+                    if (data[key]) byId(field.selector).value = data[key];
+                } else if (field.type === 'custom') {
+                    if (this.alertType === 'Verification') {
+                        byId('verification-betking-sheet').value = data.sheets?.Betking || '';
+                        byId('verification-777-sheet').value = data.sheets?.['777'] || '';
+                        byId('verification-vegas-sheet').value = data.sheets?.Vegas || '';
+                    } else {
+                        field.parse().forEach((setting, index) => {
+                            const item = document.querySelectorAll(field.selector)[index];
+                            const priorityData = data.settings?.[index] || {};
+                            item.querySelector('.amount-input').value = priorityData.amount || '';
+                            item.querySelector('.bonus-input').value = priorityData.bonusAmount || '';
+                            Array.from(item.querySelector('.card-select').options).forEach(opt => {
+                                opt.selected = priorityData.cards?.includes(opt.value) || false;
+                            });
+                        });
+                    }
+                }
+            });
+        }
+
+        async updateSettings(project) {
+            const settings = this.collectSettings();
+            if (!this.validateSettings(settings)) return;
+            await this.sendSettings(project, settings);
+        }
+
+        collectSettings() {
+            const settings = {};
+            Object.entries(this.config.fields).forEach(([key, field]) => {
+                if (field.type === 'multi-select') {
+                    settings[key] = Array.from(byId(field.selector).options)
+                        .filter(opt => opt.classList.contains('selected'))
+                        .map(opt => opt.value);
+                } else if (field.type === 'text') {
+                    settings[key] = byId(field.selector).value.trim();
+                } else if (field.type === 'checkbox') {
+                    settings[key] = byId(field.selector).checked;
+                } else if (field.type === 'select') {
+                    settings[key] = byId(field.selector).value;
+                } else if (field.type === 'custom') {
+                    settings[key] = field.parse();
+                }
+            });
+            return settings;
+        }
+
+        validateSettings(settings) {
+            for (const [key, field] of Object.entries(this.config.fields)) {
+                const value = settings[key];
+                if (field.required && (!value || (Array.isArray(value) && value.length === 0))) {
+                    setMessage('error', `Поле "${key}" є обов'язковим`);
+                    return false;
+                }
+                if (field.validate && value && !field.validate(value)) {
+                    setMessage('error', `Некоректне значення для "${key}"`);
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        async sendSettings(project, settings) {
+            const payload = { alert_type: this.alertType };
+            if (this.config.requiresProject) payload.project = project;
+            this.config.apiFields.forEach(field => {
+                if (field === 'amount') payload[field] = parseInt(settings['total_amount']);
+                else payload[field] = settings[field];
+            });
+
+            try {
+                const result = await ApiService.fetchData('/update_settings', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+                setMessage(result.success ? 'success' : 'error', result.success ? 'Успішно оновлено' : result.message || 'Виникла помилка');
+            } catch (error) {
+                console.error('Ошибка отправки настроек:', error);
+                setMessage('error', 'Виникла помилка при відправці даних');
+            }
+        }
+    }
+
+    function createAlertSettingsPopup() {
+        const style = document.createElement('style');
+        style.textContent = `
+    #alert-settings-popup {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+        max-width: 600px;
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    #project-select,
+    #alert-type-select {
+        width: 100%;
+        padding: 10px;
+        margin: 10px 0;
+        border: 1px solid #ced4da;
+        border-radius: 5px;
+        background-color: #ffffff;
+        font-size: 16px;
+        appearance: none;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    #pendings-manager-input,
+#payout-manager-input,
+#deposits-manager-input {
+    width: 100%;
+    padding: 10px;
+    margin: 10px 0;
+    border: 1px solid #ced4da;
+    border-radius: 5px;
+    background-color: #ffffff;
+    font-size: 16px;
+}
+
+     #pendings-priority-select,
+    #payout-priority-select {
+    width: 100%;
+    height: 160px;
+    background-color: #f9f9f9;
+    border: 1px solid #ccc;
+    padding: 5px;
+    font-size: 14px;
+    box-sizing: border-box;
+    max-height: none;
+    overflow-y: visible;
+  }
+
+    #project-select:focus,
+    #alert-type-select:focus,
+    #pendings-priority-select:focus,
+    #payout-priority-select:focus {
+        outline: none;
+        border-color: #80bdff;
+        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+    }
+
+    #pendings-priority-select option,
+    #payout-priority-select option {
+        padding-left: 25px; /* Отступ для галочки */
+        position: relative;
+    }
+
+    #pendings-priority-select option.selected::before,
+    #payout-priority-select option.selected::before {
+        content: '✔'; /* Галочка */
+        position: absolute;
+        left: 5px;
+        color: green;
+        font-weight: bold;
+    }
+
+    #pendings-update-btn,
+    #payout-update-btn {
+        display: block;
+        width: 100%;
+        padding: 10px;
+        margin-top: 15px;
+        background-color: #28a745;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+
+    #pendings-update-btn:hover,
+    #payout-update-btn:hover {
+        background-color: #218838;
+    }
+
+    .error {
+        color: #dc3545;
+        font-size: 14px;
+        margin-top: 10px;
+    }
+
+    .success {
+        color: #28a745;
+        font-size: 14px;
+        margin-top: 10px;
+    }
+
+    #pendings-total-amount,
+    #payout-total-amount {
+        width: 100%;
+        padding: 10px;
+        margin: 10px 0;
+        border: 1px solid #ced4da;
+        border-radius: 5px;
+        font-size: 16px;
+        background-color: #ffffff;
+        color: #495057;
+    }
+
+    #pendings-total-amount:focus,
+    #payout-total-amount:focus {
+        outline: none;
+        border-color: #80bdff;
+        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+    }
+
+    .priority-amount-container {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: 100%;
+        max-width: 400px;
+    }
+
+    /* Стили для чекбокса автоотключения */
+    #payout-auto-disable {
+        margin-right: 10px;
+        transform: scale(1.2);
+    }
+
+    .checkbox-container {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 16px;
+    }
+
+    #alert-error-msg,
+    #alert-success-msg {
+        font-size: 14px;
+        margin-top: 10px;
+    }
+
+       #update-deposits-btn {
+        display: block;
+        width: 100%;
+        padding: 10px;
+        margin-top: 15px;
+        background-color: #28a745;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+
+    #update-deposits-btn:hover {
+        background-color: #218838;
+    }
+
+    .deposit-priority-container {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+
+    .deposit-priority-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .priority-label {
+        font-weight: bold;
+        flex-shrink: 0;
+    }
+
+    .amount-input,
+    .bonus-input {
+        width: 150px;
+        padding: 5px;
+        border: 1px solid #ced4da;
+        border-radius: 5px;
+    }
+
+    .card-select {
+        width: 100px;
+        padding: 5px;
+        border: 1px solid #ced4da;
+        border-radius: 5px;
+    }
+
+    #inefficient-transaction-percent {
+        width: 100%;
+        padding: 10px;
+        margin: 10px 0;
+        border: 1px solid #ced4da;
+        border-radius: 5px;
+        font-size: 16px;
+        background-color: #ffffff;
+        color: #495057;
+    }
+    #verification-settings {
+            display: none;
+            padding: 20px;
+        }
+        .verification-sheet-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .verification-sheet-input {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ced4da;
+            border-radius: 5px;
+        }
+        #verification-update-btn {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin-top: 15px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        #verification-update-btn:hover {
+            background-color: #218838;
+        }
+`;
+        document.head.appendChild(style);
+
+        const content = `
+<select id="project-select" required>
+    <option value="" disabled selected>Оберіть проєкт</option>
+    <option value="Betking">Betking</option>
+    <option value="777">777</option>
+    <option value="Vegas">Vegas</option>
+    <option value="Verification">Доп. верифікація</option>
+</select>
+<div id="alert-type-section" style="display: none;">
+    <select id="alert-type-select" required>
+        <option value="" disabled selected>Оберіть алерт</option>
+        <option value="Pendings">Pendings</option>
+        <option value="PayOut">PayOut</option>
+        <option value="Deposits">Deposits</option>
+    </select>
+</div>
+
+        <div id="pendings-settings" style="display: none;">
+            <div class="priority-amount-container">
+                <label for="pendings-priority-select">Пріоритет:</label>
+                <select id="pendings-priority-select" multiple required></select>
+                <label for="pendings-total-amount">Сума:</label>
+                <input type="text" id="pendings-total-amount">
+                <label for="pendings-manager-input">Лист:</label>
+                <input type="text" id="pendings-manager-input" placeholder="Введіть назву листа">
+            </div>
+            <button id="pendings-update-btn">Оновити</button>
+        </div>
+
+        <div id="payout-settings" style="display: none;">
+            <div class="priority-amount-container">
+                <label for="payout-priority-select">Пріоритет:</label>
+                <select id="payout-priority-select" multiple required></select>
+                <label for="payout-total-amount">Мінімальна сума виплати:</label>
+                <input type="text" id="payout-total-amount">
+                <label for="payout-auto-disable">Автоматичне відключення авто:</label>
+                <input type="checkbox" id="payout-auto-disable">
+                <label for="payout-manager-input">Лист:</label>
+                <input type="text" id="payout-manager-input" placeholder="Введіть назву листа">
+            </div>
+            <button id="payout-update-btn">Оновити</button>
+        </div>
+
+        <div id="deposits-settings" style="display: none;">
+            <div class="deposit-priority-container">
+                ${["1 (75к)", "2 (65к)", "3 (60к)", "4 (50к)", "5 (45к)", "6 (30к)", "7 (20к)", "8 (20к)"].map(priority => `
+                    <div class="deposit-priority-item">
+                        <span class="priority-label">Приоритет ${priority}</span>
+                        <input type="text" class="amount-input" placeholder="Сума" />
+                        <input type="text" class="bonus-input" placeholder="Сума з бонусом" />
+                        <select class="card-select" multiple>
+                            <option value="foreign">Чужа</option>
+                            <option value="own">Своя</option>
+                            <option value="unknown">Невідома</option>
+                        </select>
+                    </div>
+                `).join('')}
+            </div>
+            <label for="inefficient-transaction-percent">Відсоток недоцільних транзакцій:</label>
+            <input type="text" id="inefficient-transaction-percent" placeholder="Введіть відсоток (приклад): 10%" />
+            <label for="deposits-manager-input">Лист:</label>
+            <input type="text" id="deposits-manager-input" placeholder="Введіть назву листа">
+            <button id="update-deposits-btn">Оновити</button>
+        </div>
+
+<div id="verification-settings">
+            <div class="verification-sheet-container">
+                <label for="verification-betking-sheet">Назва листа для Betking:</label>
+                <input type="text" id="verification-betking-sheet" class="verification-sheet-input" placeholder="Введіть назву листа">
+                <label for="verification-777-sheet">Назва листа для 777:</label>
+                <input type="text" id="verification-777-sheet" class="verification-sheet-input" placeholder="Введіть назву листа">
+                <label for="verification-vegas-sheet">Назва листа для Vegas:</label>
+                <input type="text" id="verification-vegas-sheet" class="verification-sheet-input" placeholder="Введіть назву листа">
+            </div>
+            <button id="verification-update-btn">Оновити</button>
+        </div>
+        <div class="error" id="alert-error-msg"></div>
+        <div class="success" id="alert-success-msg"></div>
+
+        <div class="error" id="alert-error-msg"></div>
+        <div class="success" id="alert-success-msg"></div>
+    `;
+        createPopup('alert-settings-popup', 'Налаштування алертів', content, () => {});
+
+        byId('project-select').addEventListener('change', async (e) => {
+            const selectedValue = e.target.value;
+            hideAllSections();
+
+            if (!selectedValue) {
+                byId('alert-type-section').style.display = 'none';
+                return;
+            }
+
+            if (selectedValue === 'Verification') {
+                showSection(SETTINGS_SECTIONS.Verification);
+                byId('alert-type-section').style.display = 'none';
+                const manager = new SettingsManager('Verification');
+                await manager.loadSettings(null);
+            } else {
+                byId('alert-type-section').style.display = 'block';
+                byId('alert-type-select').selectedIndex = 0;
+            }
+        });
+
+        byId('alert-type-select').addEventListener('change', async (e) => {
+            hideAllSections();
+            const alertType = e.target.value;
+            if (!alertType) return;
+
+            const manager = new SettingsManager(alertType);
+            showSection(SETTINGS_SECTIONS[alertType]);
+            const project = byId('project-select').value;
+            if (project) {
+                await manager.loadSettings(project);
+            }
+        });
+
+        ['pendings-update-btn', 'payout-update-btn', 'update-deposits-btn', 'verification-update-btn'].forEach(btn =>
+                                                                                                               byId(btn).addEventListener('click', () => {
+            const alertType = {
+                'pendings-update-btn': 'Pendings',
+                'payout-update-btn': 'PayOut',
+                'update-deposits-btn': 'Deposits',
+                'verification-update-btn': 'Verification'
+            }[btn];
+            const project = alertType === 'Verification' ? null : byId('project-select').value;
+            new SettingsManager(alertType).updateSettings(project);
+        })
+                                                                                                              );
+    }
+
+    function verificationProvider() {
+        return new Promise((resolve, reject) => {
+            const playerId = getPlayerID();
+
+            const url = `${ProjectUrl}/players/playerIdentityVerification/index/`;
+
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: url,
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                data: `backend_modules_players_models_PlayerIdentityVerificationSearchForm[login]=${encodeURIComponent(playerId)}`,
+                onload: function (response) {
+                    if (response.status === 200) {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(response.responseText, 'text/html');
+
+                        const rows = doc.querySelectorAll('tbody tr');
+                        for (let row of rows) {
+                            const cells = row.querySelectorAll('td');
+                            const verificationCount = cells[1]?.textContent.trim();
+                            const provider = cells[7]?.textContent.trim();
+
+                            if (verificationCount === '1') {
+                                resolve(provider);
+                                return;
+                            } else if (!verificationCount && provider === 'SumSub') {
+                                resolve(provider);
+                                return;
+                            }
+                        }
+                        resolve(null);
+                    } else {
+                        resolve(null);
+                    }
+                },
+                onerror: function (error) {
+                    reject(new Error(`Ошибка сети: ${error}`));
+                }
+            });
+        });
+    }
+
+    const clientEmail = "test-sheets@orbital-avatar-417621.iam.gserviceaccount.com";
+    const privateKey = `-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDfBJ/rNCji7Lqz\ntISIWkJNieayzecS8CKbCh+x+YJG5T22Uykkj61qaE6zklx1QWA0mCbD3XvIHWyZ\n/lmqi1niCgwMrzv5pwrnBIrtLvnirZfVYl8o3AmrzjuqsDDzRCfz3HYBm5FNk899\nr/DfH5P3/cnu+np2tgZCiIZqyPDCwSS+8cg/B8oJi4gljNERXTTaCplkyzuYhybT\nAhR0I09mQi9rl49BH1RIRuzlq+dANyGcT0bHZuu1SkqlwfqC4O2LJXK4ZRtEscyQ\nL9ayKaLwIkdumVyzxhmFeI+AdtN0Ncm3+lE6mIAMv/AXa51A1tAglk2ywV3ylxqT\nljyCwpy3AgMBAAECggEACRm/i4c0XUDlxCw19aPL7YLBbEMkuSFyzWWAskWJQGqz\nCvv3w4CCxhh9kFcE+NqdxLz/ZUy7dAi8rsgHUVigZq3xnJmQq/kEuTVL6gPZufCg\nL9qfds5hLVFGyV9T5V6+9p+PcooDnZPONXB24X6rY2+ddugNE/JiQlgfNr+pEM63\nX9GvGFQhYTgZAcGuYoqZf33FEs8M8IzozYWvx/9CPRlqmjNymOSrBsMIvS7KxZFO\nyUmSUaj1gFGRQUmnCK5kmUm0FT35xAqWv/55XKNgWnmX+Ubp9aGO6KcDE6t3XK52\nj5lPvlYgwUjq3bQGN9WEng4QYkPvjoCGlw1o5mcPQQKBgQD39Yr1HzBWBXJDEjK/\nrtTFwLcezNZwTq+I1V8gy6MgFYmNoMQ/ZPIt0aqJCsGAR3vQA9r8PXIC8OU+m3fU\nbD5FNt9n5SyueH+wDgjAI9M/IcJ9jKL4jaFA/iAlFf/MHevqQFueY6UecSGaPgKh\nhNXO5z3t6SwP+JO8jL0/EErQYQKBgQDmQAfwEGBeF+6OEFGI7IF5ZYd/xWnjvIj2\nHKsXXKakxGvz/iEPTxWkPIg1P5E5FcK4L/v4i12uOIjC428p2oLhy2wKm2AWEcDz\n5a9du4tsFamMqcA4YewgA9O8Mf/I0Iu9gszOH32RNRjAvxB6M01hwWaQMVF8EvUg\nnKABpSRkFwKBgA1sgaVbluZRTSpMZerysBo0oLVOKZ3S5LXnt0qzO5WVFOlR9s3n\nzSSl4TGiH2+ubwmH6+cT/IQkPoTxLb+WTJi6q8WYJp8bbu49FEQyrFESptDdOEV0\nhXJbT6oyUrLeO9NmwI8Gnf3T6hnLmaDc7CZTZormwLfsoTLn+6baXvKBAoGBAOQm\nMHddEtBJsHUOkGw3xbevtgsSZ3FlAOW11IaKpQmBJGMZvlJ4D760yFbTDSheepqd\n2XQXTJV0qXdLe3wibCwmsID2IsjbgLFsN0+OpYFNGbsq/TAhP6Mdh7HkbUrj8oOv\nVxcrtvWqgkODT2V27kdeJy3b4J0r/77308ithZizAoGAIll6hMCpgK31oX0yRcAQ\n2re14VOGQgLwdj2jqywvlBlynR7KWEHxDt5VUdKPXFGvTyQsiK6U66ZiaO5WqyRy\n9Je4hv0JUfmTPHbUZrT72oun6axQ9c0kmgz46YAsQtmiX3hdvNtPPym+Fvokasmb\nV64l1KqOdNici1ftDWTiEsY=\n-----END PRIVATE KEY-----`; // Из JSON файла сервисного аккаунта
+    const sheetId = "11D8k58HcQOBHlK3CpmaWbFOj8vUk1xhE_5VQ88fxBvk";
+
+    const scopes = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive";
+
+    function getAccessToken() {
+        return new Promise((resolve, reject) => {
+            console.log("Generating JWT...");
+            const iat = Math.floor(Date.now() / 1000);
+            const exp = iat + 3600;
+
+            const oHeader = { alg: "RS256", typ: "JWT" };
+            const oPayload = {
+                iss: clientEmail,
+                scope: scopes,
+                aud: "https://oauth2.googleapis.com/token",
+                exp: exp,
+                iat: iat
+            };
+
+            const sHeader = JSON.stringify(oHeader);
+            const sPayload = JSON.stringify(oPayload);
+
+            const sJWT = KJUR.jws.JWS.sign("RS256", sHeader, sPayload, privateKey);
+
+            fetch("https://oauth2.googleapis.com/token", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${sJWT}`
+            })
+                .then(response => response.json())
+                .then(data => {
+                if (data.access_token) {
+                    resolve(data.access_token);
+                } else {
+                    reject("No access_token found in response.");
+                }
+            })
+                .catch(err => {
+                console.error("Error during token request:", err);
+                reject(err);
+            });
+        });
+    }
+
+    function sendDataToGoogleSheet(accessToken, sheetName, data) {
+        console.log("Sending data to Google Sheets...");
+        fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${sheetName}!A1:append?valueInputOption=RAW`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + accessToken,
+            },
+            body: JSON.stringify({
+                values: [[
+                    data.url,
+                    data.playerID,
+                    data.date,
+                    data.name,
+                    data.email,
+                    data.department,
+                    data.reason
+                ]]
+            })
+        }).then(response => response.json())
+            .then(data => {
+        })
+            .catch((error) => {
+            console.error("Error sending data to Google Sheets:", error);
+        });
+    }
+
+    async function goToGoogleSheet() {
+        const attentionHeader = document.querySelector('.attention-header') || document.querySelector('.attention-header-content');
+        if (!attentionHeader?.textContent.includes('Не подтвержден!')) return;
+
+        const targetDiv = document.querySelector('.form-actions');
+        if (!targetDiv) return;
+
+        const button = createVerificationButton();
+        targetDiv.appendChild(button);
+
+        let verificationSheets;
+        try {
+            const settings = await ApiService.fetchData('/get_settings?alert_type=Verification');
+            verificationSheets = settings.sheets || { Betking: '', '777': '', Vegas: '' };
+        } catch (error) {
+            console.error('Ошибка загрузки настроек верификации:', error);
+            verificationSheets = { Betking: '', '777': '', Vegas: '' };
+        }
+
+        button.addEventListener('click', (event) => handleVerificationClick(event, verificationSheets));
+    }
+
+    function setupModalHandler() {
+        const decrementButton = document.querySelector('#decrement-balance');
+        if (!decrementButton) return;
+
+        decrementButton.addEventListener('click', () => {
+            const waitForModal = setInterval(() => {
+                const title = document.querySelector('.swal2-title');
+                const confirmButton = document.querySelector('.swal2-confirm');
+
+                if (title && confirmButton && title.textContent === 'Уменьшить Баланс') {
+                    if (!confirmButton.dataset.listenerAdded) {
+                        confirmButton.dataset.listenerAdded = 'true';
+                        confirmButton.addEventListener('click', () => {
+                            if (!userId) return;
+                            setTimeout(() => updateComment(userId), 1000);
+                        });
+                    }
+                    clearInterval(waitForModal);
+                }
+            }, 100);
+        });
+    }
+
+    function fetchTransactionLog(userId) {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: `${ProjectUrl}players/playersItems/transactionLog/${userId}/`,
+                onload: function(response) {
+                    try {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(response.responseText, 'text/html');
+                        const rows = Array.from(doc.querySelectorAll('table.table.table-striped.table-hover tbody tr'));
+                        let manualBalance = '';
+                        let refundDeposits = [];
+                        let safeBalance = [];
+                        const today = new Date();
+                        const todayStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+
+                        for (const row of rows) {
+                            const cells = row.querySelectorAll('td');
+                            if (cells.length < 8) continue;
+
+                            const operation = cells[1].textContent.trim();
+                            const amount = cells[2].textContent.trim();
+                            const fullDate = cells[6].textContent.trim();
+                            const dateOnly = fullDate.split(' ')[0];
+                            const comment = cells[7].textContent.trim();
+                            const entry = { date: fullDate, comment: comment };
+
+                            if (operation === 'Ручное начисление баланса' && !manualBalance) {
+                                manualBalance = `${fullDate} ${comment}`;
+                            } else if (operation === 'Рефанд депозита' && dateOnly === todayStr) {
+                                refundDeposits.push(entry);
+                            } else if (
+                                operation === 'Ручное начисление баланса Сейфа' &&
+                                dateOnly === todayStr &&
+                                parseFloat(amount) < 0
+                            ) {
+                                safeBalance.push(entry);
+                            }
+                        }
+
+                        let result = '';
+                        if (manualBalance) {
+                            result += manualBalance;
+                        }
+                        if (refundDeposits.length > 0) {
+                            if (result) result += '<br>';
+                            const firstRefund = refundDeposits[0];
+                            const refundNumbers = refundDeposits.map(refund => refund.comment.match(/№\s*(\d+)/)?.[1]).filter(Boolean);
+                            result += `${firstRefund.date} Рефанд депозита № ${refundNumbers.join(', № ')}`;
+                        }
+                        if (safeBalance.length > 0) {
+                            if (result) result += '<br>';
+                            const firstSafe = safeBalance[0];
+                            const safeComments = safeBalance.map(safe => safe.comment).join('; ');
+                            result += `${firstSafe.date} ${safeComments}`;
+                        }
+
+                        resolve(result || 'Не найдено подходящих операций');
+                    } catch (e) {
+                        reject(e.message);
+                    }
+                },
+                onerror: function(error) {
+                    reject(error.statusText || 'Неизвестная ошибка');
+                }
+            });
+        });
+    }
+
+
+    async function updateComment(userId) {
+        const gatewayElement = document.getElementById('gateway-method-description-visible-common');
+        if (!gatewayElement) return;
+
+        const doneButton = document.querySelector('.btn-update-comment-common');
+        const insertText = await fetchTransactionLog(userId);
+
+        let currentContent = gatewayElement.innerHTML.trim();
+
+        if (currentContent === '') {
+            gatewayElement.innerHTML = insertText + '<br>';
+        } else {
+            gatewayElement.innerHTML = currentContent + '<br>' + insertText + '<br>';
+        }
+
+        gatewayElement.dispatchEvent(new Event('input'));
+
+        if (doneButton) doneButton.click();
+    }
+
+    function createVerificationButton() {
+        const button = document.createElement('button');
+        button.id = 'custom-verification-button';
+        button.className = 'btn btn-info';
+        button.innerHTML = '<i class="fa fa-plus"></i> На верифікацію';
+        button.style.marginLeft = '10px';
+        return button;
+    }
+
+    async function handleVerificationClick(event, verificationSheets) {
+        event.preventDefault();
+
+        const { department, reason } = await showVerificationPopup();
+        if (!department || !reason) return;
+
+        const playerData = await gatherPlayerData();
+        const sheetName = getSheetNameForProject(playerData.project, verificationSheets);
+
+        try {
+            const accessToken = await getAccessToken();
+            const dataToInsert = {
+                url: window.location.href,
+                playerID: playerData.playerID,
+                date: null,
+                name: playerData.name,
+                email: playerData.email,
+                department,
+                reason
+            };
+            console.log('Данные для отправки:', dataToInsert);
+
+            await sendDataToGoogleSheet(accessToken, sheetName, dataToInsert);
+            Swal.fire({
+                icon: 'success',
+                title: 'Успішно!',
+                text: `Додали у таблицю.\nВідділ: ${department}\nПричина: ${reason}`,
+            });
+        } catch (error) {
+            console.error('Ошибка при отправке в Google Sheet:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Помилка',
+                text: 'Не вдалося додати дані до таблиці.',
+            });
+        }
+    }
+
+    function showVerificationPopup() {
+        return Swal.fire({
+            title: 'Відправити на верифікацію',
+            html: `
+            <style>
+                .swal2-popup .swal2-html-container { overflow: visible !important; }
+                .swal2-select {
+                    height: auto !important;
+                    max-height: 150px;
+                    width: 85%;
+                    margin-bottom: 10px;
+                    overflow-y: auto;
+                    box-sizing: border-box;
+                    padding: 5px;
+                    font-size: 14px;
+                }
+                option { font-size: 14px; padding: 4px; }
+            </style>
+            <label for="department-select">Оберіть відділ</label>
+            <select id="department-select" class="swal2-select">
+                <option value="">Оберіть...</option>
+                <option value="PayOut">PayOut</option>
+                <option value="Managers">Managers</option>
+                <option value="Cascad">Cascad</option>
+                <option value="Anti Fraud">Anti Fraud</option>
+            </select>
+            <label for="reason-select">Вкажіть причину</label>
+            <select id="reason-select" class="swal2-select">
+                <option value="">Оберіть...</option>
+                ${[
+                    'Після рефанду використовує чужу картку',
+                    'Підозра на малолітнього',
+                    'Підозра на Лудомана',
+                    'Схемщик/потенц. фрод',
+                    'Більше двох чужих карток в місяць',
+                    'Картка родича, неприбутковий',
+                    'Недоцільні транзакції',
+                    'Картковий фрод',
+                    'Фін претензія',
+                    'Cascad'
+                ].map(reason => `<option value="${reason}">${reason}</option>`).join('')}
+            </select>
+        `,
+            showCancelButton: true,
+            confirmButtonText: 'Відправити',
+            cancelButtonText: 'Скасувати',
+            preConfirm: () => {
+                const department = document.getElementById('department-select').value;
+                const reason = document.getElementById('reason-select').value;
+                if (!department || !reason) {
+                    Swal.showValidationMessage('Будь ласка, оберіть усі параметри');
+                    return false;
+                }
+                return { department, reason };
+            }
+        }).then(result => result.isConfirmed ? result.value : {});
+    }
+
+    async function gatherPlayerData() {
+        const playerID = getPlayerID();
+        const project = getProject();
+        const name = Array.from(document.querySelectorAll('tr'))
+        .filter(row => ['Имя', 'Middle Name', 'Фамилия'].includes(row.querySelector('th')?.textContent.trim()))
+        .map(row => row.querySelector('td').textContent.trim())
+        .join(' ');
+        const email = await revealContact('email');
+
+        return { playerID, project, name, email };
+    }
+
+    function getSheetNameForProject(project, sheets) {
+        const projectMap = {
+            'betking': 'Betking',
+            '777': '777',
+            'vegas': 'Vegas'
+        };
+        const normalizedProject = projectMap[project.toLowerCase()] || '';
+        const sheetName = sheets[normalizedProject] || '';
+
+        if (!sheetName) {
+            console.warn(`Название листа для проекта ${project} не найдено в настройках`);
+        }
+        return sheetName;
+    }
+
+    const STYLES = `
+    .well { min-height: 20px; padding: 19px; margin-bottom: 20px; background-color: #f5f5f5; border: 1px solid #e3e3e3; border-radius: 4px; }
+    .well-sm { padding: 9px; border-radius: 3px; }
+    .label { display: inline; padding: .2em .6em .3em; font-size: 75%; font-weight: 700; line-height: 1; color: #fff; text-align: center; white-space: nowrap; vertical-align: baseline; border-radius: .25em; }
+    .label-success { background-color: #5cb85c; }
+    .col-xs-12 { width: 100%; }
+    .col-md-3 { width: 25%; }
+    .col-md-5 { width: 41.66667%; }
+    .col-md-6 { width: 50%; }
+    .row { margin-right: -15px; margin-left: -15px; display: flex; flex-wrap: wrap; }
+    .container-fluid { padding-right: 15px; padding-left: 15px; margin-right: auto; margin-left: auto; }
+    .modal-header h3 { margin: 0; line-height: 1.42857143; }
+    .modal-body { position: relative; padding: 15px; }
+    ul.p-rich_text_list__bullet { padding-left: 0; list-style: disc outside; }
+`;
+
+    const makeBonusClickable = () => {
+        const patterns = [
+            {
+                regex: /\[#(\d{1,4})\]/i,
+                numberIndex: 1,
+                sportOnly: true
+            },
+            {
+                regex: /\[бонус(?:а)?\s*№\s*(\d+)\]/i,
+                numberIndex: 1
+            },
+            {
+                regex: /Назначение бонуса\s*№\s*(\d+)/i,
+                numberIndex: 1
+            },
+            {
+                regex: /Присвоение бонуса\s*№\s*(\d+)/i,
+                numberIndex: 1
+            },
+            {
+                regex: /Активация бонуса\s*№\s*(\d+)/i,
+                numberIndex: 1
+            },
+            {
+                regex: /Ассайн бонуса\s*№\s*(\d+)/i,
+                numberIndex: 1
+            },
+            {
+                regex: /Отыгрывание бонуса\s*№\s*(\d+)/i,
+                numberIndex: 1
+            }
+        ];
+
+        document.querySelectorAll('td').forEach(td => {
+            const text = td.textContent;
+            let originalTextChunk = '';
+            let bonusNumber = '';
+            let matchFound = false;
+
+            const isSportBonus = /ставки на спорт/i.test(text);
+
+            for (const pattern of patterns) {
+                const match = text.match(pattern.regex);
+                if (match) {
+                    if (pattern.sportOnly && !isSportBonus) {
+                        continue;
+                    }
+                    originalTextChunk = match[0];
+                    bonusNumber = match[pattern.numberIndex];
+                    matchFound = true;
+                    break;
+                }
+            }
+
+            if (!matchFound) {
+                return;
+            }
+
+            const linkHtml = `<a href="#" class="bonus-link" data-bonus="${bonusNumber}" data-sport="${isSportBonus}" style="color: blue; cursor: pointer;">${bonusNumber}</a>`;
+
+            const newTextChunk = originalTextChunk.replace(bonusNumber, linkHtml);
+
+            if (td.innerHTML.includes(originalTextChunk)) {
+                td.innerHTML = td.innerHTML.replace(originalTextChunk, newTextChunk);
+            }
+
+            const linkElement = td.querySelector('.bonus-link');
+            if (linkElement) {
+                linkElement.addEventListener('click', e => {
+                    e.preventDefault();
+                    fetchBonusInfo(bonusNumber, isSportBonus);
+                });
+            }
+        });
+    };
+
+
+    const fetchBonusInfo = (bonusNumber, isSportBonus = false) => fetch(
+        `${ProjectUrl}${isSportBonus ? 'sportBetting/sportBettingBonus' : 'bonuses/bonusesItems'}/preview/${bonusNumber}/`,
+        { method: 'POST', headers: { "accept": "*/*", "x-requested-with": "XMLHttpRequest" }, credentials: 'include' }
+    )
+    .then(res => res.text())
+    .then(html => {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        let content;
+
+        if (isSportBonus) {
+            content = formatSportBonusContent(doc.querySelector('.popup-content'));
+        } else {
+            const modalContent = doc.querySelector('.modal-content');
+            if (modalContent) {
+                const closeButton = modalContent.querySelector('.close');
+                if (closeButton) closeButton.remove();
+                content = modalContent.innerHTML;
+            }
+        }
+
+        if (content) showPopup(content);
+        else alert(`Ошибка: не удалось получить данные о ${isSportBonus ? 'спортивном ' : ''}бонусе.`);
+    })
+    .catch(error => console.error('Ошибка при запросе бонуса:', error))
+
+    const formatSportBonusContent = popupContent => {
+        if (!popupContent) return '';
+        const getText = (sel, fallback = '') => popupContent.querySelector(sel)?.textContent || fallback;
+        const getHtml = (sel, fallback = '') => popupContent.querySelector(sel)?.innerHTML || fallback;
+
+        return `
+        <div class="popup-content">
+            <div class="modal-header"><h3>${getText('.modal-header h3', 'Спортивний бонус')}</h3></div>
+            <div class="modal-body">
+                <div class="container-fluid">
+                    <div class="row"><div class="col-xs-12"><div class="well well-sm" style="background:#f5e8e8;">
+                        <div><label>Название</label></div><div><span>${getText('.well-sm span')}</span></div>
+                    </div></div></div>
+                    <div class="row">
+                        <div class="col-xs-12 col-md-6"><div class="well well-sm">
+                            <div><label>Дата/время с</label></div><div><span>${getText('.col-md-6:nth-child(1) .well-sm span')}</span></div>
+                        </div></div>
+                        <div class="col-xs-12 col-md-6"><div class="well well-sm">
+                            <div><label>Дата/время до</label></div><div><span>${getText('.col-md-6:nth-child(2) .well-sm span')}</span></div>
+                        </div></div>
+                    </div>
+                    <div class="row"><div class="col-xs-12 col-md-3"><div class="well well-sm">
+                        <div><label>Тип бонуса</label></div><div><span class="label label-success">${getText('.label-success')}</span></div>
+                    </div></div></div>
+                    <div class="row"><div class="col-xs-12 col-md-3"><div class="well well-sm">
+                        <div><label>Доступно раз</label></div><div><span>${getText('.col-md-3:nth-child(1) .well-sm span')}</span></div>
+                    </div></div></div>
+                    <div class="row"><div class="col-xs-12 col-md-5"><div class="well well-sm">
+                        <div><label>Минимальная сумма депозита</label></div><div><span>${getText('.col-md-5 .well-sm span')}</span></div>
+                    </div></div></div>
+                    <hr>
+                    <div class="row"><div class="col-xs-12"><div class="well well-sm" style="background:#fff;">
+                        <div><label>Текст сумма</label></div><div><span>${getText('.row:nth-last-child(3) .well-sm span')}</span></div>
+                    </div></div></div>
+                    <div class="row"><div class="col-xs-12"><div class="well well-sm" style="background:#fff;">
+                        <div><label>Вейджер описание</label></div><div><span>${getText('.row:nth-last-child(2) .well-sm span')}</span></div>
+                    </div></div></div>
+                    <div class="row"><div class="col-xs-12"><div class="well well-sm" style="background:#fff;">
+                        <div><label>Промо описание</label></div><div>${getHtml('.row:last-child .well-sm > div:nth-child(2)')}</div>
+                    </div></div></div>
+                </div>
+            </div>
+        </div>
+    `.trim();
+    };
+
+    const showPopup = content => {
+        let popup = document.getElementById('custom-popup');
+        if (!popup) {
+            popup = document.createElement('div');
+            Object.assign(popup.style, {
+                position: 'fixed', top: '10%', left: '50%', transform: 'translate(-50%, 0)',
+                backgroundColor: '#fff', boxShadow: '0 0 10px rgba(0,0,0,0.5)', zIndex: '9999',
+                width: '60%', padding: '20px', borderRadius: '8px', overflowY: 'auto', maxHeight: '80%'
+            });
+            popup.id = 'custom-popup';
+            document.body.appendChild(popup);
+
+            const style = document.createElement('style');
+            style.textContent = STYLES;
+            popup.appendChild(style);
+        }
+
+        popup.innerHTML = content;
+        const closeBtn = Object.assign(document.createElement('button'), {
+            innerHTML: '×',
+            style: 'position: absolute; top: 10px; right: 10px; background: transparent; color: red; border: none; font-size: 24px; cursor: pointer;'
+        });
+        closeBtn.onclick = () => popup.remove();
+        popup.appendChild(closeBtn);
+    };
+
+    function addAgeToBirthdate() {
+        function calculateAge(birthDate) {
+            const today = new Date();
+            let age = today.getFullYear() - birthDate.getFullYear();
+            const m = today.getMonth() - birthDate.getMonth();
+
+            if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+                age--;
+            }
+
+            return age;
+        }
+
+        const rows = document.querySelectorAll("tr");
+
+        const style = document.createElement('style');
+        style.innerHTML = `
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+    `;
+        document.head.appendChild(style);
+
+        rows.forEach(row => {
+            const th = row.querySelector("th");
+            if (th && th.textContent.trim() === "День рождения") {
+                const td = row.querySelector("td");
+                if (td) {
+                    const birthDateStr = td.textContent.trim();
+                    const birthDateParts = birthDateStr.split(" ");
+                    const day = parseInt(birthDateParts[0], 10);
+                    const month = months[birthDateParts[1].toLowerCase()];
+                    const year = parseInt(birthDateParts[2], 10);
+
+                    const birthDate = new Date(year, month - 1, day);
+                    const age = calculateAge(birthDate);
+
+                    const ageSpan = document.createElement("span");
+                    ageSpan.textContent = ` | Вік: ${age}`;
+
+                    if (age <= 23 || age >= 60) {
+                        ageSpan.style.color = "red";
+                        ageSpan.style.fontWeight = "bold";
+                        ageSpan.style.animation = "blink 1s infinite";
+
+                    }
+
+                    td.appendChild(ageSpan);
+                }
+            }
+        });
+    }
+
+    function addPibRow() {
+        const rows = document.querySelectorAll("tr");
+
+        let surname = "";
+        let middleName = "";
+        let firstName = "";
+
+        rows.forEach(row => {
+            const th = row.querySelector("th");
+            if (th) {
+                if (th.textContent.trim() === "Фамилия" || th.textContent.trim() === "Surname") {
+                    surname = row.querySelector("td").textContent.trim();
+                } else if (th.textContent.trim() === "Middle Name") {
+                    middleName = row.querySelector("td").textContent.trim();
+                } else if (th.textContent.trim() === "Имя" || th.textContent.trim() === "Name") {
+                    firstName = row.querySelector("td").textContent.trim();
+                }
+            }
+        });
+
+        const pib = `${surname} ${firstName} ${middleName}`;
+
+        const newRow = document.createElement("tr");
+        newRow.classList.add("even");
+
+        const th = document.createElement("th");
+        th.textContent = "ПІБ";
+
+        const td = document.createElement("td");
+        td.textContent = pib;
+
+        newRow.appendChild(th);
+        newRow.appendChild(td);
+
+        const commentRow = Array.from(rows).find(row => {
+            const th = row.querySelector("th");
+            return th && (th.textContent.trim() === "Комментарий" || th.textContent.trim() === "Comment");
+        });
+
+        if (commentRow) {
+            commentRow.parentNode.insertBefore(newRow, commentRow);
+        }
+    }
+
+    function disablePromoOffersUSA() {
+        const project = getProject();
+        const baseHeaders = {
+            accept: "*/*",
+            "accept-language": "uk,ru-RU;q=0.9,ru;q=0.8,en-US;q=0.7,en;q=0.6",
+            "cache-control": "no-cache",
+            pragma: "no-cache",
+            "priority": "u=1, i",
+            "sec-ch-ua": "\"Chromium\";v=\"134\", \"Not:A-Brand\";v=\"24\", \"Google Chrome\";v=\"134\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"Windows\"",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+            "x-requested-with": "XMLHttpRequest"
+        };
+
+        const baseConfig = {
+            referrer: `https://admin.${project}.com/players/playersItems/update/${userId}/`,
+            referrerPolicy: "strict-origin-when-cross-origin",
+            method: "POST",
+            mode: "cors",
+            credentials: "include"
+        };
+
+        const targetTr = Array.from(document.querySelectorAll('tr'))
+        .find(tr => tr.querySelector('th')?.textContent.trim() === 'Лимит промо оферов в день');
+        const targetTd = targetTr?.querySelector('td');
+
+        if (!targetTd) {
+            console.error('Не найден элемент <td> в строке с "Лимит промо оферов в день"');
+            console.log('Найденные <th>:', Array.from(document.querySelectorAll('th')).map(th => th.textContent.trim()));
+            return;
+        }
+
+        const disableButton = $('<input>', {
+            type: 'button',
+            value: 'Вимкнути всі активності',
+            class: 'btn btn-xs btn-danger',
+            css: { 'margin-right': '10px' }
+        }).on('click', e => {
+            e.preventDefault();
+            Swal.fire({
+                icon: 'question',
+                title: 'Вимкнути всі активності?',
+                showCancelButton: true,
+                cancelButtonText: 'Відміна',
+                confirmButtonText: 'Так',
+                preConfirm: async () => {
+                    try {
+                        const limitResponse = await fetch(
+                            `https://admin.${project}.com/players/playersItems/changePromoOfferLimitPerDay/`,
+                            {
+                                ...baseConfig,
+                                headers: { ...baseHeaders, "content-type": "application/x-www-form-urlencoded; charset=UTF-8" },
+                                body: `playerId=${userId}&offerLimit=0`
+                            }
+                        ).then(res => res.json());
+
+                        if (!limitResponse.success) throw new Error(limitResponse.message || 'Помилка першого запиту');
+
+                        const featuresToBlock = { playerId: userId };
+
+                        const allCheckboxes = document.querySelectorAll('.toggle-restricted-features-info-container input[type="checkbox"]');
+
+                        allCheckboxes.forEach(checkbox => {
+                            if (checkbox.name) {
+                                if (checkbox.name === 'redeemLimitBlocked') {
+                                    featuresToBlock[checkbox.name] = false;
+                                } else {
+                                    featuresToBlock[checkbox.name] = true;
+                                }
+                            }
+                        });
+
+                        const featuresResponse = await fetch(
+                            `https://admin.${project}.com/players/playersItems/changeRestrictedFeatures/`,
+                            {
+                                ...baseConfig,
+                                headers: { ...baseHeaders, "content-type": "application/json" },
+                                body: JSON.stringify(featuresToBlock)
+                            }
+                        ).then(res => res.json());
+
+                        if (!featuresResponse.success) throw new Error(featuresResponse.message || 'Помилка другого запиту');
+
+                        const bonusResponse = await fetch(
+                            `https://admin.${project}.com/players/playersItems/update/${userId}/`,
+                            {
+                                ...baseConfig,
+                                headers: { ...baseHeaders, "content-type": "application/x-www-form-urlencoded; charset=UTF-8" },
+                                body: `Players[no_bonus]=1`
+                            }
+                        ).then(res => res.text());
+
+                        if (!bonusResponse) throw new Error('Помилка третього запиту');
+
+                        const currentLanguage = GM_getValue(languageKey, 'російська');
+                        let insertText = currentLanguage === 'українська'
+                        ? `Відключив всі активності, оффери, бонуси`
+                        : `Отключил все активности, офферы, бонусы`;
+                        insertTextToComment(insertText, true)
+                        Swal.fire({ icon: 'success', title: 'Успішно відключено', width: '200px' })
+                            .then(() => location.reload());
+                    } catch (error) {
+                        Swal.fire({ icon: 'error', title: 'Помилка', text: error.message });
+                    }
+                }
+            });
+        });
+        targetTd.appendChild(disableButton[0]);
+    }
+
+    let previousValues = {
+        moneyFromOfferPercentage: 0,
+        activityMoneyPercentage: 0,
+        totalPendings: 0
+    };
+
+    function addUSACheckButton(TotalPA, moneyFromOfferPercentage, activityMoneyPercentage, totalPendings, entries, winnings) {
+        const formatableTextDiv = document.getElementById('formatable-text-antifraud_manager');
+        if (!formatableTextDiv) return;
+
+        if (moneyFromOfferPercentage !== undefined) previousValues.moneyFromOfferPercentage = moneyFromOfferPercentage;
+        if (activityMoneyPercentage !== undefined) previousValues.activityMoneyPercentage = activityMoneyPercentage;
+        if (totalPendings !== undefined) previousValues.totalPendings = totalPendings;
+        if (entries !== undefined) previousValues.entries = entries;
+        if (winnings !== undefined) previousValues.winnings = winnings;
+
+        const existingButton = document.getElementById('check-button');
+        if (existingButton) {
+            existingButton.remove();
+        }
+
+        const existingGreenButton = document.getElementById('green-button');
+        if (existingGreenButton) {
+            existingGreenButton.remove();
+        }
+
+        const checkButton = document.createElement('button');
+        checkButton.id = 'check-button';
+        checkButton.type = 'button';
+        checkButton.innerText = 'Коментар';
+        checkButton.onclick = () => {
+            const date = getCurrentDate();
+            const time = getCurrentTime();
+            const initials = GM_getValue(initialsKey);
+            const currentLanguage = GM_getValue(languageKey, 'російська').toLowerCase();
+            const isRussian = currentLanguage === 'російська';
+
+            const colorPA = TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red');
+
+            let textToInsert = `${date} в ${time} проверен антифрод командой/${initials}<br><b>РА: <span style="color: ${colorPA}">${TotalPA}</span> | FM Offer: ${previousValues.moneyFromOfferPercentage}% | FM Activities: ${previousValues.activityMoneyPercentage.toFixed(2)}% | </b>`;
+
+            if (previousValues.totalPendings > 1) {
+                const balanceStyle = previousValues.totalPendings > 2000 ? 'color: red;' : '';
+                textToInsert += `<b> ${isRussian ? 'На выплате' : 'На виплаті'}:</b> <b style="${balanceStyle}">${previousValues.totalPendings}$</b> | `;
+            }
+
+            if (previousValues.entries > 10 || previousValues.winnings > 10) {
+                let balanceText = `<b>${isRussian ? 'На балансе' : 'На балансі'}:</b> `;
+                const parts = [];
+
+                if (previousValues.entries > 10) {
+                    parts.push(`${previousValues.entries} entries`);
+                }
+                if (previousValues.winnings > 10) {
+                    parts.push(`${previousValues.winnings} winings`);
+                }
+
+                textToInsert += balanceText + parts.join(' | ') + ' | ';
+            }
+
+            insertTextIntoField(textToInsert);
+        };
+
+        const greenButton = document.createElement('button');
+        greenButton.id = 'green-button';
+        greenButton.type = 'button';
+        greenButton.innerText = 'Green';
+        greenButton.style.marginLeft = '5px';
+        greenButton.onclick = () => {
+            document.execCommand('foreColor', false, 'green');
+        };
+
+        formatableTextDiv.insertBefore(checkButton, formatableTextDiv.firstChild);
+        formatableTextDiv.insertBefore(greenButton, checkButton.nextSibling);
+
+        formatableTextDiv.insertBefore(checkButton, formatableTextDiv.firstChild);
+    }
+
+    const POPUP_STYLES_USA = {
+        position: 'fixed',
+        top: '53px',
+        left: '1409px',
+        width: '310px',
+        height: 'auto',
+        padding: '20px',
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        border: '2px solid black',
+        boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.1)',
+        zIndex: '10000',
+        fontFamily: '"Roboto", sans-serif',
+        fontSize: '16px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        borderRadius: '10px',
+        resize: 'both',
+        overflow: 'auto',
+        animation: 'glow 1s infinite alternate'
+    };
+
+    async function getProjectProfit(project, id) {
+
+        const domains = {
+            'spintime': 'spintime.app',
+        };
+
+        const projectHost = domains[project] || `${project}.com`;
+
+        const baseURL = `https://admin.${projectHost}/players/playersDetail/index/`;
+        const paymentsURL = `https://admin.${projectHost}/payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bid%5D=&PaymentsItemsOutForm%5Bstatus%5D%5B%5D=pending&PaymentsItemsOutForm%5Bstatus%5D%5B%5D=closed&PaymentsItemsOutForm%5Bsearch_login%5D=${id}&PaymentsItemsOutForm%5Bis_vip%5D=&PaymentsItemsOutForm%5Bsearch_amount%5D=&PaymentsItemsOutForm%5Bsearch_amount_api%5D=&PaymentsItemsOutForm%5Bsearch_date%5D=&PaymentsItemsOutForm%5Bsearch_payed%5D=&PaymentsItemsOutForm%5Bsearch_requisite%5D=&PaymentsItemsOutForm%5Bgateway_id%5D=&PaymentsItemsOutForm%5Bis_auto_payout_allowed%5D=&PaymentsItemsOutForm%5Boutput_id%5D=&ajax=__grid&newPageSize=500`;
+
+        let deposits = 0;
+        let withdrawals = 0;
+
+        return new Promise((resolve) => {
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: baseURL,
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                data: `PlayersDetailForm%5Blogin%5D=${encodeURIComponent(id)}&PlayersDetailForm%5Bperiod%5D=2015.06.09+00%3A00%3A00+-+${getTomorrowDate()}+23%3A59%3A59&PlayersDetailForm%5Bshow_table%5D=1`,
+                onload: (response) => {
+                    const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                    const table = doc.querySelector('.detail-view');
+                    if (table) {
+                        table.querySelectorAll('tr').forEach(row => {
+                            if (row.querySelector('th')?.textContent.trim() === 'Deposits Total') {
+                                deposits = parseFloat(row.querySelector('td')?.textContent.trim().replace(/[^0-9.-]/g, '')) || 0;
+                            }
+                        });
+                    }
+
+                    GM_xmlhttpRequest({
+                        method: 'GET',
+                        url: paymentsURL,
+                        onload: (paymentsResponse) => {
+                            const paymentsDoc = new DOMParser().parseFromString(paymentsResponse.responseText, 'text/html');
+                            const paymentsTable = paymentsDoc.querySelector('.items.table.table-striped.table-hover');
+                            if (paymentsTable) {
+                                paymentsTable.querySelectorAll('tr').forEach(row => {
+                                    const cells = row.querySelectorAll('td');
+                                    if (cells.length >= 12) {
+                                        const status = cells[1].querySelector('.label')?.textContent.trim();
+                                        const gateway = cells[11].textContent.trim();
+                                        const amount = parseFloat(cells[6].textContent.trim().replace(/[^0-9.-]/g, '')) || 0;
+                                        if (status === 'closed' && gateway !== 'Другое') {
+                                            withdrawals += amount;
+                                        }
+                                    }
+                                });
+                            }
+                            const profit = deposits - withdrawals;
+                            console.log(`${project}: Deposits=${deposits}, Withdrawals=${withdrawals}, Profit=${profit}`);
+                            resolve({ project, profit, deposits, withdrawals });
+                        },
+                        onerror: () => resolve({ project, profit: 0, deposits: 0, withdrawals: 0 })
+                    });
+                },
+                onerror: () => resolve({ project, profit: 0, deposits: 0, withdrawals: 0 })
+            });
+        });
+    }
+
+    async function getRelatedAccounts(currentProject, playerID) {
+        const domains = {
+            'spintime': 'spintime.app',
+        };
+
+        const currentHost = domains[currentProject.toLowerCase()] || `${currentProject}.com`;
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: `https://admin.${currentHost}/fraudDetectors/antifraudBase/personAccounts/?playerId=${playerID}`,
+                headers: {
+                    "accept": "*/*",
+                    "content-type": "application/x-www-form-urlencoded",
+                    "x-requested-with": "XMLHttpRequest"
+                },
+                onload: (response) => {
+                    if (response.status !== 200) {
+                        reject(new Error(`Server error: ${response.status}`));
+                        return;
+                    }
+                    const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                    const accounts = doc.querySelectorAll('.person-account');
+                    const relatedAccounts = [];
+                    const projectLinks = {};
+                    accounts.forEach(account => {
+                        const projectRaw = account.querySelector('.person-account__project b')?.textContent.trim();
+                        const project = projectRaw ? projectRaw.toLowerCase() : null;
+
+                        const successLabel = account.querySelector('.person-account__login b.label-success');
+                        const id = successLabel?.querySelector('a')?.textContent.trim();
+                        const link = successLabel?.querySelector('a')?.getAttribute('href');
+
+                        if (project && id && successLabel) {
+                            projectLinks[project] = link;
+
+                            if (project !== currentProject.toLowerCase()) {
+                                relatedAccounts.push({ project, id });
+                            }
+                        }
+                    });
+                    resolve({ relatedAccounts, projectLinks });
+                },
+                onerror: (error) => reject(error)
+            });
+        });
+    }
+
+    function formatProfitOutput(mainResult, relatedProjects, totalProfit, projectLinks, totalPending, winnings) {
+        const cleanBalance = parseFloat(winnings) || 0;
+        const prognoseInOut = mainResult.deposits - (totalPending + mainResult.withdrawals + cleanBalance);
+        const TotalPA = (mainResult.withdrawals / mainResult.deposits) * 100;
+        const prognosePA = mainResult.deposits ? ((mainResult.withdrawals + totalPending + cleanBalance) / mainResult.deposits * 100) : 0;
+
+        const mainText = document.querySelector('.popup-main-text');
+        if (mainText) {
+            const totalPASpan = mainText.querySelector('span:nth-child(2)');
+            if (totalPASpan) {
+                const newTotalPA = TotalPA / 100;
+                totalPASpan.textContent = newTotalPA.toFixed(2);
+                totalPASpan.style.color = getColor(newTotalPA);
+            }
+        }
+
+        addUSACheckButton((TotalPA / 100).toFixed(2));
+
+        let outputHTML = `
+        <div class="profit-section main-profit">
+            <div>
+                <b class="clickable" data-text='<b>Total InOut: <span style="color: ${getBalanceColor(mainResult.profit)}">${mainResult.profit.toFixed(2)}$</span></b>'>
+                    Total InOut: <span style="color: ${getBalanceColor(mainResult.profit)}">${mainResult.profit.toFixed(2)}$</span>
+                </b>
+            </div>
+            ${(totalPending > 1 || cleanBalance > 1) ? `
+                <div>
+                    <b class="clickable" data-text='<b>Prognose InOut: <span style="color: ${getBalanceColor(prognoseInOut)}">${prognoseInOut.toFixed(2)}$</span></b>'>
+                        Prognose InOut: <span style="color: ${getBalanceColor(prognoseInOut)}">${prognoseInOut.toFixed(2)}$</span>
+                    </b>
+                </div>
+                <div>
+                    <b class="clickable" data-text='<b>Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span></b>'>
+                        Prognose PA: <span style="color: ${getColor(prognosePA / 100)}">${prognosePA.toFixed(2)}%</span>
+                    </b>
+                </div>
+            ` : ''}
+        </div>
+        <div class="profit-section related-projects">
+            <b>Related Projects:</b><br>
+    `;
+
+        relatedProjects.forEach(proj => {
+            const projectName = proj.project.charAt(0).toUpperCase() + proj.project.slice(1);
+            let link = projectLinks[proj.project] || '#';
+            const playerId = link.split('/players/playersItems/index/?Players[login]=')[1];
+            if (link.includes('/players/playersItems/index/?Players[login]=')) {
+                link = `https://admin.${proj.project}.com/players/playersItems/search?PlayersSearchForm[number]=${playerId}`;
+            }
+            outputHTML += `
+            <div>
+                <a href="${link}" target="_blank" class="project-link">${projectName} (${playerId})</a>: ${proj.profit.toFixed(2)}$</div>
+        `;
+        });
+
+        outputHTML += `
+        </div>
+        <div class="profit-section total-profit">
+            <div><b>Person InOut:</b> ${totalProfit.toFixed(2)}$</div>
+        </div>
+    `;
+
+        return outputHTML;
+    }
+
+    function modifyPersonAccountsLinks() {
+        document.querySelector('.get-person-accounts-button').addEventListener('click', () => {
+            const resultDiv = document.getElementById('result');
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach(() => {
+                    const links = resultDiv.querySelectorAll('.person-account__login a');
+                    links.forEach(link => {
+                        let href = link.getAttribute('href');
+                        if (href.includes('/players/playersItems/index/?Players[login]=')) {
+                            const playerId = href.split('/players/playersItems/index/?Players[login]=')[1];
+                            const domain = href.split('/players/')[0]; // Берем домен, например https://admin.funzcity.com
+                            const newHref = `${domain}/players/playersItems/search?PlayersSearchForm[number]=${playerId}`;
+                            link.setAttribute('href', newHref);
+                        }
+                    });
+                });
+            });
+
+            observer.observe(resultDiv, { childList: true, subtree: true });
+
+            setTimeout(() => observer.disconnect(), 5000);
+        });
+    }
+
+    async function fetchProfit(totalPending, winnings, profitButton, container) {
+        const loader = document.createElement('div');
+        loader.style.cssText = 'border: 8px solid #f3f3f3; border-top: 8px solid #3498db; border-radius: 50%; width: 50px; height: 50px; animation: spin 2s linear infinite; margin: 10px auto;';
+        container.appendChild(loader);
+
+        const style = document.createElement('style');
+        style.textContent = COMBINED_STYLES;
+        document.head.appendChild(style);
+
+        profitButton.remove();
+
+        try {
+            const playerID = getPlayerID();
+            const currentProject = getProject();
+            console.log(`Starting for ${currentProject} with ID ${playerID}`);
+
+            const mainResult = await getProjectProfit(currentProject, playerID);
+
+            let relatedAccounts = [];
+            let projectLinks = {};
+
+            try {
+                const response = await getRelatedAccounts(currentProject, userId);
+                relatedAccounts = response.relatedAccounts;
+                projectLinks = response.projectLinks;
+            } catch (relatedError) {
+                console.warn('Could not fetch related accounts. Proceeding with main project only.', relatedError.message);
+            }
+
+            const relatedPromises = relatedAccounts.map(acc => getProjectProfit(acc.project, acc.id));
+            const relatedResults = await Promise.all(relatedPromises);
+
+            const allProjectsProfit = [mainResult, ...relatedResults];
+            const totalProfit = allProjectsProfit.reduce((sum, item) => sum + item.profit, 0);
+
+            container.removeChild(loader);
+            container.innerHTML = formatProfitOutput(mainResult, relatedResults, totalProfit, projectLinks, totalPending, winnings);
+
+            container.querySelectorAll('.clickable').forEach(element => {
+                element.addEventListener('click', () => {
+                    if (element.dataset.clicked === 'true') return;
+
+                    const formattedText = element.getAttribute('data-text');
+                    insertTextToComment(formattedText);
+                    element.dataset.clicked = 'true';
+
+                    element.style.opacity = '0.85';
+                });
+            });
+        } catch (error) {
+            console.error('Error in fetchProfit:', error);
+            container.removeChild(loader);
+            container.innerHTML = `<div style="color: red;">Error: ${error.message}</div>`;
+        }
+    }
+
+    function createIcon(iconClass, positionStyles, title, onClick) {
+        const icon = document.createElement('div');
+        icon.innerHTML = `<i class="fa ${iconClass}"></i>`;
+        applyStyles(icon, { ...ICON_STYLES, ...positionStyles });
+        icon.title = title;
+        icon.onclick = onClick;
+        return icon;
+    }
+
+    async function createUSAPopupBox() {
+        if (document.getElementById('custom-popup-box')) return;
+
+        async function fetchMonthAndTotalPA() {
+            const urlMatch = Array.from(document.querySelectorAll('script'))
+            .find(script => script.textContent.includes('#show-player-in-out'))
+            ?.textContent.match(/url:\s*'([^']+)'/)?.[1];
+            if (!urlMatch) return null;
+
+            const descriptionField = document.getElementById('gateway-method-description-visible-common');
+            const hasRefunds = descriptionField?.innerText.toLowerCase().includes('рефандами');
+
+            try {
+                const response = await $.ajax({ type: 'GET', url: urlMatch });
+                return {
+                    TotalPA: hasRefunds ? 'Refund' : response.totalInOut,
+                    MonthPA: response.monthInOut
+                };
+            } catch (error) {
+                console.error('Error fetching PA:', error);
+                return null;
+            }
+        }
+
+        setTimeout(async () => {
+            const { TotalPA, MonthPA } = (await fetchMonthAndTotalPA()) || {};
+            const entries = document.querySelector('#Players_balance')?.value.trim() || 'N/A';
+            const winnings = getWinnings() || 'N/A';
+
+            const popupBox = document.createElement('div');
+            const popupWidth = parseInt(POPUP_STYLES_USA.width.replace('px', ''), 10);
+            applyStyles(popupBox, {
+                ...POPUP_STYLES_USA,
+                left: `calc(100% - ${popupWidth + 20}px)`,
+                border: `2px solid ${getColor(TotalPA)}`,
+                animation: 'glow 1s infinite alternate'
+            });
+            popupBox.id = 'custom-popup-box';
+
+            const dragHandle = document.createElement('div');
+            applyStyles(dragHandle, {
+                position: 'absolute',
+                top: '0',
+                left: '0',
+                width: '100%',
+                height: '20px',
+                cursor: 'move'
+            });
+            popupBox.appendChild(dragHandle);
+
+            let isDragging = false;
+            let offsetX, offsetY;
+            dragHandle.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                offsetX = e.clientX - popupBox.getBoundingClientRect().left;
+                offsetY = e.clientY - popupBox.getBoundingClientRect().top;
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
+
+            function onMouseMove(e) {
+                if (!isDragging) return;
+                popupBox.style.left = `${e.clientX - offsetX}px`;
+                popupBox.style.top = `${e.clientY - offsetY}px`;
+            }
+
+            function onMouseUp() {
+                isDragging = false;
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            }
+
+            const mainText = document.createElement('div');
+            mainText.className = 'popup-main-text';
+            mainText.innerHTML = `
+            <center><h3 id="freemoney-info"></h3></center>
+            <center><b>Entries: ${entries}$ | Winnings: ${winnings}$</center>
+            <center>Month: <span style="color: ${MonthPA < 0.75 ? 'green' : (MonthPA >= 0.75 && MonthPA < 1 ? 'orange' : 'red')}">${MonthPA || 'N/A'}</span> | Total: <span style="color: ${TotalPA < 0.75 ? 'green' : (TotalPA >= 0.75 && TotalPA < 1 ? 'orange' : 'red')}">${TotalPA || 'N/A'}</span></center>
+            <center id="pending-info"></center>
+            <center id="offer-info">Loading deposit analysis...</center>
+            <center id="activitymoney-info"></b></center>
+        `;
+            popupBox.appendChild(mainText);
+
+            popupBox.appendChild(createOldSettingsIcon());
+            popupBox.appendChild(createOldStatisticIcon());
+            popupBox.appendChild(createIcon('fa-eye', { top: '10px', left: '10px' }, 'Нагляд', () => createFraudPopup()));
+
+            const reminderIcon = createIcon('fa-book', { top: '40px', left: '10px' }, 'Памятка', () => {
+                createReminderPopup();
+                reminderIcon.classList.remove('blinking');
+                GM_setValue('reminderBlinkKey', false);
+            });
+            if (await checkForNewArticles() || GM_getValue('reminderBlinkKey', true)) {
+                reminderIcon.classList.add('blinking');
+            }
+            popupBox.appendChild(reminderIcon);
+
+            await addAdminIcon(popupBox);
+
+            const firstRowButtonContainer = document.createElement('div');
+            applyStyles(firstRowButtonContainer, { marginTop: '10px', display: 'flex', gap: '10px' });
+            popupBox.appendChild(firstRowButtonContainer);
+
+            const { isCheckedToday } = await checkUserInChecklist();
+            firstRowButtonContainer.appendChild(createCleanButton(isCheckedToday));
+
+            const secondRowButtonContainer = document.createElement('div');
+            applyStyles(secondRowButtonContainer, { marginTop: '10px', textAlign: 'center' });
+            popupBox.appendChild(secondRowButtonContainer);
+
+            getPendings(totalPending => {
+                const pendingInfo = document.getElementById('pending-info');
+                if (totalPending) pendingInfo.textContent = `Total Pending: ${totalPending.toFixed(2)}$`;
+                else pendingInfo.remove();
+
+                const profitButton = document.createElement('button');
+                applyStyles(profitButton, { ...BUTTON_STYLES, backgroundColor: '#2196F3' });
+                profitButton.innerText = 'Total InOut';
+                profitButton.onmouseover = () => profitButton.style.backgroundColor = '#2f76ae';
+                profitButton.onmouseout = () => profitButton.style.backgroundColor = '#2196F3';
+                profitButton.addEventListener('click', () => fetchProfit(totalPending, winnings, profitButton, secondRowButtonContainer));
+                secondRowButtonContainer.appendChild(profitButton);
+
+                analyzePayments((offerPercentage, totalMoneyFromOffer, totalDeposits, moneyFromOfferPercentage, totalDepositsAmount, depositsWithOffer) => {
+                    const offerInfoElement = document.getElementById('offer-info');
+                    if (offerInfoElement) {
+                        const colorText = (text, condition) => condition ? `<span style="color: red;">${text}</span>` : text;
+                        offerInfoElement.innerHTML = `
+                        ${colorText(`Deposits With Offer: ${offerPercentage}%`, offerPercentage >= 50)}<br>
+                        ${colorText(`Money From Offer: ${moneyFromOfferPercentage}%`, moneyFromOfferPercentage >= 25)}
+                    `;
+                        offerInfoElement.title = `Кількість депозитів: ${totalDeposits}\nКількість оферів: ${depositsWithOffer}\nСума депозитів: ${totalDepositsAmount}$\nСума entries: ${totalMoneyFromOffer}$`;
+                    }
+
+                    analyzeTransaction(totalUSD => {
+                        const activityMoneyInfoElement = document.getElementById('activitymoney-info');
+                        const activityMoneyPercentage = totalDepositsAmount > 0 ? (totalUSD / totalDepositsAmount) * 100 : parseFloat(totalUSD);
+                        if (activityMoneyInfoElement) {
+                            const colorText = (text, condition) => condition ? `<span style="color: red;">${text}</span>` : text;
+                            activityMoneyInfoElement.innerHTML = colorText(`<b>Activity Money: ${activityMoneyPercentage.toFixed(2)}%</b>`, activityMoneyPercentage >= 50);
+                            activityMoneyInfoElement.title = `Activity Money: ${totalUSD}$`;
+
+                            const freeMoneyInfoElement = document.getElementById('freemoney-info');
+                            const freeMoneyTotal = activityMoneyPercentage + parseFloat(moneyFromOfferPercentage);
+                            const textColor = freeMoneyTotal < 10 ? 'green' : (freeMoneyTotal < 50 ? 'orange' : 'red');
+                            freeMoneyInfoElement.innerHTML = `Free Money: ${freeMoneyTotal.toFixed(2)}%`;
+                            freeMoneyInfoElement.style.color = textColor;
+                            popupBox.style.borderColor = textColor;
+                            popupBox.style.animation = `glow 1s infinite alternate`;
+
+                            const style = document.createElement('style');
+                            style.textContent = `
+                            @keyframes glow {
+                                0% { box-shadow: 0 0 5px ${textColor}; }
+                                100% { box-shadow: 0 0 25px ${textColor}; }
+                            }
+                        `;
+                            document.head.appendChild(style);
+
+                            getPendingss().then(totalPendings => {
+                                addUSACheckButton(TotalPA, moneyFromOfferPercentage, activityMoneyPercentage, totalPendings, entries, winnings);
+                            }).catch(error => console.error('Ошибка при получении данных:', error));
+                        }
+                    });
+                });
+            });
+
+            document.body.appendChild(popupBox);
+        }, 300);
+    }
+
+    function analyzePayments(callback) {
+        const playerID = getPlayerID();
+        const domain = getDomain();
+
+        const requestUrl = `https://${domain}/payments/paymentsItemsIn/index/?PaymentsItemsInForm%5Bsearch_login%5D=${playerID}`;
+
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url: requestUrl,
+            onload: function (response) {
+                try {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(response.responseText, 'text/html');
+                    const formData = new URLSearchParams();
+                    formData.append('newPageSize', '10000');
+
+                    GM_xmlhttpRequest({
+                        method: 'POST',
+                        url: requestUrl,
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        data: formData.toString(),
+                        onload: function (response) {
+                            try {
+                                const parser = new DOMParser();
+                                const doc = parser.parseFromString(response.responseText, 'text/html');
+
+                                const rows = doc.querySelectorAll('tr.even, tr.odd');
+                                let totalDeposits = 0;
+                                let totalDepositsAmount = 0;
+                                let totalMoneyFromOffer = 0;
+                                let depositsWithOffer = 0;
+
+                                rows.forEach(row => {
+                                    const status = row.querySelector('td:nth-child(3)')?.textContent.trim();
+                                    const depositAmountText = row.querySelector('td:nth-child(5)')?.textContent.trim();
+                                    const offerDetailsText = row.querySelector('td:nth-child(7)')?.textContent.trim();
+
+                                    if (status === 'closed') {
+                                        totalDeposits++;
+                                        const depositAmountMatch = depositAmountText?.match(/([\d.]+) USD/);
+                                        const depositAmount = depositAmountMatch ? parseFloat(depositAmountMatch[1]) : 0;
+
+                                        const entriesMatch = offerDetailsText?.match(/(\d+\.?\d*) entries/);
+                                        const entriesCount = entriesMatch ? parseFloat(entriesMatch[1]) : 0;
+
+                                        totalDepositsAmount += depositAmount;
+
+                                        if (entriesCount > 0) {
+                                            depositsWithOffer++;
+                                            totalMoneyFromOffer += entriesCount - depositAmount;
+                                        }
+                                    }
+                                });
+
+                                if (totalDeposits > 0) {
+                                    const offerPercentage = (depositsWithOffer / totalDeposits) * 100;
+                                    const moneyFromOfferPercentage = (totalMoneyFromOffer / totalDepositsAmount) * 100;
+
+                                    callback(
+                                        offerPercentage.toFixed(2),
+                                        totalMoneyFromOffer.toFixed(2),
+                                        totalDeposits,
+                                        moneyFromOfferPercentage.toFixed(2),
+                                        totalDepositsAmount.toFixed(2),
+                                        depositsWithOffer
+                                    );
+                                } else {
+                                    console.log('No deposits found.');
+                                    callback(0, 0, 0, 0, 0, 0);
+                                }
+                            } catch (error) {
+                                console.error('Error processing POST response:', error);
+                                callback(0, 0, 0, 0, 0, 0);
+                            }
+                        },
+                        onerror: function () {
+                            console.error('POST request failed.');
+                            callback(0, 0, 0, 0, 0, 0);
+                        },
+                    });
+                } catch (error) {
+                    console.error('Error processing GET response:', error);
+                    callback(0, 0, 0, 0, 0, 0);
+                }
+            },
+            onerror: function () {
+                console.error('GET request failed.');
+                callback(0, 0, 0, 0, 0, 0);
+            },
+        });
+    }
+
+
+    function analyzeTransaction(callback) {
+        const userId = window.location.pathname.split('/')[4];
+        const project = getProject();
+        const domain = getDomain();
+
+        const requestUrl = `https://${domain}/players/playersItems/transactionLog/${userId}`;
+
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url: requestUrl,
+            onload: function(response) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(response.responseText, 'text/html');
+                const formData = new FormData();
+                formData.append('pageSize', '10000');
+
+                GM_xmlhttpRequest({
+                    method: 'POST',
+                    url: requestUrl,
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    data: new URLSearchParams(formData).toString(),
+                    onload: function(response) {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(response.responseText, 'text/html');
+
+                        const rows = doc.querySelectorAll('tbody tr');
+
+                        let totalUSD = 0;
+
+                        rows.forEach((row) => {
+                            const secondCell = row.querySelector('td:nth-child(2)');
+                            const amountCell = row.querySelector('td:nth-child(3)');
+                            const commentCell = row.querySelector('td:nth-child(9)');
+                            const secondCellText = secondCell.textContent.trim().toLowerCase();
+
+                            if (secondCell) {
+                                if (secondCellText.includes("entries")) {
+                                    const entryAmount = parseFloat(amountCell.textContent.trim());
+                                    totalUSD += entryAmount;
+                                }
+                            }
+
+                            if (commentCell) {
+                                const commentText = commentCell.textContent.trim();
+
+                                if (commentText.toLowerCase().includes("change balance when exchanging")) {
+                                    return;
+                                }
+
+                                if (commentText) {
+                                    const usdMatch = commentText.match(/(\d+(\.\d+)?)\s*USD/);
+                                    if (usdMatch) {
+                                        const amount = parseFloat(usdMatch[1]);
+                                        totalUSD += amount;
+                                    }
+                                    if (commentText.toLowerCase().includes("entries") && !secondCellText.includes("entries")) {
+                                        const entryAmount = parseFloat(amountCell.textContent.trim());
+                                        totalUSD += entryAmount;
+                                    }
+                                }
+                            }
+                        });
+                        if (callback) {
+                            callback(totalUSD.toFixed(2));
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    function getPendings(callback) {
+        const playerID = getPlayerID();
+        const domain = getDomain();
+        const baseURL = `https://${domain}/payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${playerID}`;
+
+        let totalPending = 0;
+
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url: baseURL,
+            onload: function(response) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(response.responseText, 'text/html');
+
+                const select = doc.querySelector('#newPageSize');
+                if (select) {
+                    select.value = '500';
+                    const event = new Event('change', { bubbles: true });
+                    select.dispatchEvent(event);
+                }
+                const rows = doc.querySelectorAll('tr');
+                rows.forEach(row => {
+                    const statusSpan = row.querySelector('span.label');
+                    if (statusSpan && (statusSpan.textContent.trim() === 'pending' || statusSpan.textContent.trim() === 'review' || statusSpan.textContent.trim() === 'on_hold')) {
+                        const amountCode = row.querySelector('td:nth-child(6) code');
+                        if (amountCode) {
+                            const amountText = amountCode.textContent.trim().replace('USD', '').trim();
+                            const amount = parseFloat(amountText.replace(',', '.'));
+                            if (!isNaN(amount)) {
+                                totalPending += amount;
+                            }
+                        }
+                    }
+                });
+                callback(totalPending);
+            }
+        });
+    }
+
+    function getPendingss() {
+        return new Promise((resolve, reject) => {
+            const playerID = getPlayerID();
+            const domain = getDomain();
+            const baseURL = `https://${domain}/payments/paymentsItemsOut/index/?PaymentsItemsOutForm%5Bsearch_login%5D=${playerID}`;
+
+            let totalPending = 0;
+
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: baseURL,
+                onload: function(response) {
+                    try {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(response.responseText, 'text/html');
+
+                        const select = doc.querySelector('#newPageSize');
+                        if (select) {
+                            select.value = '500';
+                            const event = new Event('change', { bubbles: true });
+                            select.dispatchEvent(event);
+                        }
+
+                        const rows = doc.querySelectorAll('tr');
+                        rows.forEach(row => {
+                            const statusSpan = row.querySelector('span.label');
+                            if (statusSpan && (statusSpan.textContent.trim() === 'pending' || statusSpan.textContent.trim() === 'review' || statusSpan.textContent.trim() === 'on_hold')) {
+                                const amountCode = row.querySelector('td:nth-child(6) code');
+                                if (amountCode) {
+                                    const amountText = amountCode.textContent.trim().replace('USD', '').trim();
+                                    const amount = parseFloat(amountText.replace(',', '.'));
+                                    if (!isNaN(amount)) {
+                                        totalPending += amount;
+                                    }
+                                }
+                            }
+                        });
+                        resolve(totalPending);
+                    } catch (error) {
+                        reject(error);
+                    }
+                },
+                onerror: function() {
+                    reject('Error fetching data');
+                }
+            });
+        });
+    }
+
+    function getWinnings() {
+        const balanceInput = document.querySelector('#Players_winnings');
+        if (balanceInput) {
+            return balanceInput.value.trim();
+        }
+
+        const keywords = ['Winnings'];
+        const rows = document.querySelectorAll('tr');
+        for (const row of rows) {
+            if (keywords.some(keyword => row.textContent.includes(keyword))) {
+                const cells = row.querySelectorAll('td');
+                if (cells.length > 0) {
+                    return cells[0].textContent.trim();
+                }
+            }
+        }
+
+        return '0.00';
+    }
+
+    function enableFraudButton() {
+
+        const rows = document.querySelectorAll('table.detail-view tbody tr');
+
+        rows.forEach(row => {
+            const header = row.querySelector('th');
+            if (header && header.textContent.trim() === 'Потенциальный фрод') {
+                const td = row.querySelector('td');
+                if (td && !td.querySelector('input[type="checkbox"]')) {
+                    const fraudButton = document.createElement('button');
+                    fraudButton.textContent = 'Fraud';
+
+                    Object.assign(fraudButton.style, {
+                        marginLeft: '10px',
+                        padding: '6px 12px',
+                        backgroundColor: '#ff4d4f',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                        transition: 'all 0.3s ease',
+                        outline: 'none'
+                    });
+
+                    fraudButton.addEventListener('mouseover', () => {
+                        fraudButton.style.backgroundColor = '#ff7875';
+                        fraudButton.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
+                        fraudButton.style.transform = 'translateY(-1px)';
+                    });
+
+                    fraudButton.addEventListener('mouseout', () => {
+                        fraudButton.style.backgroundColor = '#ff4d4f';
+                        fraudButton.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+                        fraudButton.style.transform = 'translateY(0)';
+                    });
+
+                    fraudButton.addEventListener('click', function() {
+                        fetch(`${ProjectUrl}players/playerFeature/suspectedFraud/${userId}/`, {
+                            headers: {
+                                "accept": "*/*",
+                                "accept-language": "uk,ru-RU;q=0.9,ru;q=0.8,en-US;q=0.7,en;q=0.6",
+                                "cache-control": "no-cache",
+                                "pragma": "no-cache",
+                                "priority": "u=1, i",
+                                "sec-ch-ua": "\"Not(A:Brand\";v=\"99\", \"Google Chrome\";v=\"133\", \"Chromium\";v=\"133\"",
+                                "sec-ch-ua-mobile": "?0",
+                                "sec-ch-ua-platform": "\"Windows\"",
+                                "sec-fetch-dest": "empty",
+                                "sec-fetch-mode": "cors",
+                                "sec-fetch-site": "same-origin",
+                                "x-requested-with": "XMLHttpRequest"
+                            },
+                            referrer: window.location.href,
+                            referrerPolicy: "strict-origin-when-cross-origin",
+                            body: null,
+                            method: "GET",
+                            mode: "cors",
+                            credentials: "include"
+                        })
+                            .then(response => response.json())
+                            .then(data => {
+                            window.location.reload();
+                        })
+                            .catch(error => {
+                            console.error('Помилка:', error);
+                        });
+                    });
+
+                    const span = td.querySelector('span');
+                    if (span) {
+                        span.insertAdjacentElement('afterend', fraudButton);
+                    } else {
+                        td.appendChild(fraudButton);
+                    }
+                }
+            }
+        });
+    }
+
+    function getIPInfo(ip) {
+        return new Promise((resolve) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: `http://ip-api.com/json/${ip}?fields=country,city,isp`,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                },
+                onload: function(response) {
+                    try {
+                        const data = JSON.parse(response.responseText);
+                        if (data.country && data.city && data.isp) {
+                            resolve(`${data.country}, ${data.city} (ISP: ${data.isp})`);
+                        } else {
+                            resolve(`Информация недоступна. Причина: ${data.message || 'неизвестно'}`);
+                        }
+                    } catch (e) {
+                        resolve(`Ошибка парсинга: ${e.message}`);
+                    }
+                },
+                onerror: function(error) {
+                    console.log('Ошибка запроса:', error);
+                    resolve(`Ошибка запроса: ${error.statusText || 'Неизвестная ошибка'}`);
+                }
+            });
+        });
+    }
+
+    function addLocationButton() {
+        const rows = document.querySelectorAll('tr td');
+
+        rows.forEach(td => {
+            if (td.querySelector('.js-location-added')) return;
+
+            const ipMatch = td.textContent.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/);
+            if (ipMatch) {
+                const ip = ipMatch[0];
+
+                const button = document.createElement('button');
+                button.textContent = '📍';
+                button.type = 'button';
+                button.title = 'Показать местоположение';
+
+                button.classList.add('js-location-added');
+
+                Object.assign(button.style, {
+                    marginLeft: '8px',
+                    padding: '4px',
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '50%',
+                    border: 'none',
+                    backgroundColor: '#E6E6FA',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                    transition: 'all 0.2s ease'
+                });
+
+                button.addEventListener('mouseover', () => {
+                    button.style.backgroundColor = '#D8BFD8';
+                    button.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
+                });
+                button.addEventListener('mouseout', () => {
+                    button.style.backgroundColor = '#E6E6FA';
+                    button.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+                });
+
+                button.addEventListener('click', async (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const info = await getIPInfo(ip);
+                    alert(`IP: ${ip}\n${info}`);
+                });
+
+                td.appendChild(button);
+            }
+        });
+    }
+
+    function addMainMenuButtons() {
+        const navElement = document.querySelector('div.collapse.navbar-collapse ul.pull-right.nav.navbar-nav');
+
+        if (navElement) {
+            const referralItem = document.createElement('li');
+            referralItem.innerHTML = `
+            <a href="/referrals/referralsStatistics/report">
+                <i class="fa fa-users"></i> Реферальна система
+            </a>
+        `;
+
+            const boostersItem = document.createElement('li');
+            boostersItem.innerHTML = `
+            <a href="/rankLeague/rankLeaguePlayersBoostersReport/view">
+                <i class="fa fa-rocket"></i> Бустери
+            </a>
+        `;
+
+            navElement.insertBefore(boostersItem, navElement.firstChild);
+            navElement.insertBefore(referralItem, navElement.firstChild);
+
+            const offersItem = document.createElement('li');
+            if (window.location.href.includes('.com') && !window.location.href.includes('betking')) {
+                offersItem.innerHTML = `
+                <a href="/cash/promoOffers/index/">
+                    <i class="fa fa-gift"></i> Оффери
+                </a>
+            `;
+                navElement.insertBefore(offersItem, navElement.firstChild);
+            }
+            if (managerData.status === 'Admin') {
+                const alertsSettings = document.createElement('li');
+                alertsSettings.innerHTML = `
+                <a href="/antifraudAlertings/AntifraudAlertingsSettings/">
+                    <i class="fa fa-cog"></i> Алерти
+                </a>
+            `;
+                navElement.insertBefore(alertsSettings, navElement.firstChild);
+
+            }
+        }
+    }
+
+    const checkCardFunction = () => {
+        const getPageId = () => GM_getValue('easyPayPageId', null);
+        const setPageId = id => GM_setValue('easyPayPageId', id);
+
+        const fetchPageId = callback => {
+            console.log('Fetching new PageId...');
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: 'https://api.easypay.ua/api/system/createPage',
+                headers: { 'PartnerKey': 'easypay-v2', 'locale': 'ua', 'AppId': 'baa6213a-d24d-4ba3-a8ee-51b5f136bbfd', 'content-type': 'application/json' },
+                data: '{}',
+                onload: r => {
+                    const data = JSON.parse(r.responseText);
+                    console.log('PageId response:', data);
+                    callback(null, setPageId(data.pageId) || getPageId());
+                },
+                onerror: () => {
+                    console.error('PageId fetch failed');
+                    callback('PageId error');
+                }
+            });
+        };
+
+        const checkCard = (card, output) => {
+            const pageId = getPageId();
+            console.log('Checking card:', card, 'PageId:', pageId);
+
+            if (!pageId) {
+                console.log('No PageId, fetching new one...');
+                return fetchPageId((err, id) => err ? output.textContent = err : checkCard(card, output));
+            }
+
+            console.log('Sending card check request...');
+            GM_xmlhttpRequest({
+                method: 'POST',
+                url: 'https://api.easypay.ua/api/payment/infoCheck',
+                headers: {
+                    'accept': 'application/json',
+                    'appid': 'baa6213a-d24d-4ba3-a8ee-51b5f136bbfd',
+                    'content-type': 'application/json; charset=UTF-8',
+                    'pageid': pageId,
+                    'partnerkey': 'easypay-v2'
+                },
+                data: JSON.stringify({
+                    serviceKey: 'CARDHOLDER-INFO',
+                    data: { operation: 'GetCardholderInfo', data: { Pan: card, PanGuid: null, IsFullName: false } }
+                }),
+                onload: r => {
+                    const data = JSON.parse(r.responseText);
+                    console.log('Card check response:', data);
+
+                    if (data.error?.errorCode?.includes('PAGE')) {
+                        console.log('PageId invalid, refreshing...');
+                        return fetchPageId((err, id) => err ? output.textContent = err : checkCard(card, output));
+                    }
+
+                    const initials = data.data?.data?.fullname;
+                    if (initials) {
+                        const date = new Date().toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\./g, '');
+                        output.textContent = `${card} ${initials} ${date}`;
+                    } else {
+                        output.textContent = 'Не знайдено';
+                    }
+                    console.log('Result displayed:', output.textContent);
+                },
+                onerror: () => {
+                    console.error('Card check request failed');
+                    output.textContent = 'Помилка';
+                }
+            });
+        };
+
+        const targetDiv = document.getElementById('formatable-text-common');
+        if (targetDiv && !document.getElementById('cardInput')) {
+            const parentRow = targetDiv.closest('tr');
+            const newRow = document.createElement('tr');
+            newRow.innerHTML = `
+            <th style="vertical-align: middle;">Пробив картки</th>
+            <td>
+                <div style="display: flex; gap: 8px; align-items: center; padding: 5px 0;">
+                    <div style="position: relative; width: 250px;">
+                        <input id="cardInput" placeholder="Номер картки" style="width: 100%; padding: 6px 24px 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#4CAF50'" onblur="this.style.borderColor='#ccc'">
+                        <span id="clearInput" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); cursor: pointer; font-size: 14px; color: #666; display: none;">✕</span>
+                    </div>
+                    <button id="checkBtn" style="padding: 6px 12px; background: linear-gradient(45deg, #4CAF50, #45a049); color: white; border: none; border-radius: 4px; font-size: 14px; cursor: pointer; transition: transform 0.1s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">Пробити</button>
+                </div>
+                <div id="cardResult" style="margin-top: 5px; font-size: 14px; color: #333; cursor: pointer; user-select: all;" title="Клік для копіювання"></div>
+            </td>`;
+
+            parentRow.parentNode.insertBefore(newRow, parentRow);
+
+            const input = document.getElementById('cardInput');
+            const clearBtn = document.getElementById('clearInput');
+            const btn = document.getElementById('checkBtn');
+            const result = document.getElementById('cardResult');
+
+            input.addEventListener('input', () => {
+                clearBtn.style.display = input.value ? 'block' : 'none';
+            });
+
+            clearBtn.addEventListener('click', () => {
+                input.value = '';
+                clearBtn.style.display = 'none';
+                result.textContent = '';
+                input.focus();
+            });
+
+            btn.onclick = e => {
+                e.preventDefault();
+                const card = input.value.trim();
+                if (!card) return result.textContent = 'Введи номер!';
+                result.textContent = 'Перевіряю...';
+                console.log('Button clicked, starting check...');
+                checkCard(card, result);
+            };
+
+            result.onclick = () => {
+                if (result.textContent && !result.textContent.includes('Перевіряю') && !result.textContent.includes('Помилка')) {
+                    navigator.clipboard.writeText(result.textContent);
+                    result.style.color = '#4CAF50';
+                    setTimeout(() => result.style.color = '#333', 500);
+                    console.log('Result copied to clipboard');
+                }
+            };
+        }
+    };
+
+    function updateCardMasksFromComments() {
+        const extractCardNumbers = (text) => {
+            if (!text) return [];
+            return text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().match(/\b\d{16}\b/g) || [];
+        };
+
+        const matchMaskWithCard = (mask, card) => {
+            if (!mask || !card) return false;
+            const [firstPart, lastPart] = mask.split('|');
+            return card.startsWith(firstPart) && card.endsWith(lastPart);
+        };
+
+        const createCardElement = (card) => {
+            const fullCardSpan = document.createElement('span');
+            fullCardSpan.textContent = card;
+            fullCardSpan.style.cursor = 'pointer';
+            fullCardSpan.style.fontWeight = 'bold';
+            fullCardSpan.title = 'Копіювати';
+
+            const copiedMessage = document.createElement('span');
+            copiedMessage.textContent = ' Скопійовано!';
+            copiedMessage.style.color = 'green';
+            copiedMessage.style.marginLeft = '8px';
+            copiedMessage.style.fontWeight = 'normal';
+            copiedMessage.style.display = 'none';
+
+            fullCardSpan.onclick = () => {
+                navigator.clipboard.writeText(card).then(() => {
+                    fullCardSpan.style.color = '#6699cc';
+                    copiedMessage.style.display = 'inline';
+                    setTimeout(() => {
+                        fullCardSpan.style.color = '';
+                        copiedMessage.style.display = 'none';
+                    }, 1000);
+                });
+            };
+
+            return { fullCardSpan, copiedMessage };
+        };
+
+        const commentDiv = document.getElementById('gateway-method-description-visible-common');
+        if (!commentDiv) return;
+
+        const cardNumbers = extractCardNumbers(commentDiv.innerHTML);
+        if (!cardNumbers.length) return;
+
+        const masksTable = document.querySelector('#payments-cards-masks-grid tbody');
+        if (!masksTable) return;
+
+        const rows = masksTable.getElementsByTagName('tr');
+        if (!rows.length) return;
+
+        for (const row of rows) {
+            const maskCell = row.cells[1];
+            if (!maskCell) continue;
+
+            const maskElement = maskCell.querySelector('strong');
+            const originalMask = maskElement ? maskElement.textContent : maskCell.textContent;
+            if (!originalMask) continue;
+
+            for (const card of cardNumbers) {
+                if (matchMaskWithCard(originalMask, card)) {
+                    const { fullCardSpan, copiedMessage } = createCardElement(card);
+                    maskCell.innerHTML = '';
+                    maskCell.appendChild(fullCardSpan);
+                    maskCell.appendChild(copiedMessage);
+                    break;
+                }
+            }
+        }
+    }
+
+    //============== Окно AVG (на странице депозитов) ==================
+
+    async function fetchAndRenderMiniStats() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const userId = urlParams.get('PaymentsItemsInForm[search_login]');
+        if (!userId) return;
+
+        const getPeriod = (type) => {
+            const now = new Date();
+            const past = new Date();
+            if (type === '30d') past.setDate(now.getDate() - 30);
+            else if (type === '3m') past.setMonth(now.getMonth() - 3);
+            else if (type === '6m') past.setMonth(now.getMonth() - 6);
+            else if (type === 'year') past.setFullYear(now.getFullYear(), 0, 1);
+
+            const fmt = (d, isEnd) => {
+                const y = d.getFullYear();
+                const m = String(d.getMonth() + 1).padStart(2, '0');
+                const d2 = String(d.getDate()).padStart(2, '0');
+                return `${y}.${m}.${d2} ${isEnd ? '23:59:59' : '00:00:00'}`;
+            };
+            return `${fmt(past, false)} - ${fmt(now, true)}`;
+        };
+
+        const fetchStats = async (period) => {
+            const formData = new FormData();
+            formData.append('backend_modules_players_models_PlayersDetailForm[login]', userId);
+            formData.append('backend_modules_players_models_PlayersDetailForm[period]', period);
+            formData.append('backend_modules_players_models_PlayersDetailForm[show_table]', '1');
+            formData.append('PlayersDetailForm[login]', userId);
+            formData.append('PlayersDetailForm[period]', period);
+            formData.append('PlayersDetailForm[show_table]', '1');
+            formData.append('yt0', 'Применить');
+
+            const response = await fetch('/players/playersDetail/index/', {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const htmlText = await response.text();
+            const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+            const rows = Array.from(doc.querySelectorAll('tr'));
+
+            const countRaw = rows.find(r => r.querySelector('th')?.textContent.trim() === 'Deposits Count')?.querySelector('td')?.textContent.trim();
+            const totalRaw = rows.find(r => r.querySelector('th')?.textContent.trim() === 'Deposits Total')?.querySelector('td')?.textContent.trim();
+
+            const count = countRaw ? parseInt(countRaw.replace(/[^\d]/g, ''), 10) : 0;
+            const total = totalRaw ? parseFloat(totalRaw.replace(/[^\d.]/g, '')) : 0;
+            const avg = count > 0 ? (total / count).toFixed(2) : '0.00';
+
+            return { count, total, avg };
+        };
+
+        const renderContent = (data) => `
+        <div style="padding: 18px 24px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: #64748b;">Кількість:</span>
+                <span style="font-weight: 600;">${data.count}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span style="color: #64748b;">Загальна сума:</span>
+                <span style="font-weight: 600;">${data.total.toLocaleString()}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 10px; border-top: 2px solid rgba(0,0,0,0.03);">
+                <span style="color: #1e293b; font-weight: bold;">AVG:</span>
+                <span style="font-weight: 800; color: #16a34a; font-size: 18px;">${data.avg}</span>
+            </div>
+        </div>
+    `;
+
+        try {
+            let miniBox = document.getElementById('mini-deposit-stats');
+            if (!miniBox) {
+                miniBox = document.createElement('div');
+                miniBox.id = 'mini-deposit-stats';
+                Object.assign(miniBox.style, {
+                    position: 'fixed', top: '20px', right: '20px', zIndex: '10000',
+                    backgroundColor: 'rgba(255, 255, 255, 0.9)', backdropFilter: 'blur(10px)',
+                    color: '#1a202c', borderRadius: '12px', fontSize: '14px',
+                    fontFamily: '"Inter", sans-serif', boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
+                    border: '1px solid rgba(255, 255, 255, 0.5)', minWidth: '280px',
+                    overflow: 'hidden'
+                });
+                document.body.appendChild(miniBox);
+
+                let isDragging = false, currentX, currentY, initialX, initialY, xOffset = 0, yOffset = 0;
+                const dragStart = (e) => {
+                    initialX = e.clientX - xOffset; initialY = e.clientY - yOffset;
+                    if (e.target.closest('#stats-header')) isDragging = true;
+                };
+                const dragEnd = () => { isDragging = false; };
+                const drag = (e) => {
+                    if (!isDragging) return;
+                    e.preventDefault();
+                    currentX = e.clientX - initialX; currentY = e.clientY - initialY;
+                    xOffset = currentX; yOffset = currentY;
+                    miniBox.style.transform = `translate(${currentX}px, ${currentY}px)`;
+                };
+                document.addEventListener('mousedown', dragStart);
+                document.addEventListener('mousemove', drag);
+                document.addEventListener('mouseup', dragEnd);
+            }
+
+            const tabs = [
+                { key: '30d', label: '30 днів' },
+                { key: '3m',  label: '3 міс' },
+                { key: '6m',  label: '6 міс' },
+                { key: 'year', label: 'Рік' }
+            ];
+
+            let activeTab = '30d';
+            const cache = {};
+
+            const tabStyle = (active) => `
+            padding: 5px 10px; cursor: pointer; border: none; background: ${active ? '#fff' : 'transparent'};
+            color: ${active ? '#3498db' : '#7f8c8d'}; font-weight: ${active ? 'bold' : 'normal'};
+            border-radius: 6px; font-size: 12px; transition: all 0.2s;
+            box-shadow: ${active ? '0 2px 5px rgba(0,0,0,0.1)' : 'none'};
+        `;
+
+            const render = async (tabKey) => {
+                activeTab = tabKey;
+
+                miniBox.querySelectorAll('.period-tab').forEach(t => {
+                    const isActive = t.dataset.key === tabKey;
+                    t.style.cssText = tabStyle(isActive);
+                });
+
+                const bodyEl = miniBox.querySelector('#stats-body');
+                bodyEl.innerHTML = '<div style="padding: 20px; text-align: center; color: #7f8c8d;">Завантаження...</div>';
+
+                if (!cache[tabKey]) {
+                    cache[tabKey] = await fetchStats(getPeriod(tabKey));
+                }
+
+                bodyEl.innerHTML = renderContent(cache[tabKey]);
+            };
+
+            miniBox.innerHTML = `
+            <div id="stats-header" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 18px; cursor: move; border-bottom: 1px solid rgba(0,0,0,0.05); user-select: none;">
+                <b style="font-size: 13px; color: #2d3748;">Статистика депозитів</b>
+                <div id="stats-toggle" style="cursor: pointer; padding: 2px 8px; font-size: 18px; color: #64748b; font-weight: bold;">−</div>
+            </div>
+            <div style="display: flex; gap: 4px; padding: 8px 12px; background: #f0f0f0;">
+                ${tabs.map(t => `<button class="period-tab" data-key="${t.key}" style="${tabStyle(t.key === activeTab)}">${t.label}</button>`).join('')}
+            </div>
+            <div id="stats-body"></div>
+        `;
+
+            miniBox.querySelectorAll('.period-tab').forEach(btn => {
+                btn.addEventListener('click', () => render(btn.dataset.key));
+            });
+
+            const toggleBtn = miniBox.querySelector('#stats-toggle');
+            const body = miniBox.querySelector('#stats-body');
+            const tabsBar = miniBox.querySelector('div[style*="f0f0f0"]');
+
+            toggleBtn.onclick = (e) => {
+                e.stopPropagation();
+                const hidden = body.style.display === 'none';
+                body.style.display = hidden ? 'block' : 'none';
+                tabsBar.style.display = hidden ? 'flex' : 'none';
+                toggleBtn.textContent = hidden ? '−' : '+';
+            };
+            await render(activeTab);
+
+        } catch (e) {
+            console.error('[Stats] Error:', e);
+        }
+    }
+
+    //============== Конец окна AVG (на странице депозитов) ==================
+
+
+    //============== ПОПАП СТАТИСТИКИ ==================
+
+    function setupManagerStats(API_BASE_URL, token) {
+        let statsUserId = managerData.id;
+        let managerGoal = managerData.goal || 80;
+
+        async function createAndDragPopup() {
+            if (document.getElementById('manager-stats-popup')) return;
+            const popup = document.createElement('div');
+            popup.id = 'manager-stats-popup';
+
+            popup.innerHTML = `
+        <div id="stats-header">
+            <span>Продуктивність за зміну</span>
+            <span id="stats-toggle-btn" title="Згорнути/Розгорнути"></span>
+        </div>
+        <div id="stats-content-wrapper">
+            <div class="stat-item"><strong>Оброблено:</strong> <span id="processed-per-shift">...</span> з <span id="shift-goal">${managerGoal}</span> (<span id="percent-complete" style="font-weight: bold;">...</span>)</div>
+            <div class="stat-item"><strong>Прогноз на зміну:</strong> <span id="projected-total" style="font-weight: bold;">...</span> акаунтів</div>
+            <div class="stat-item"><strong>Поточний темп:</strong> <span id="current-pace">...</span> ак/год</div>
+            <div id="feedback-message">...</div>
+        </div>
+        <div id="stats-minimal-view" style="display: none;">
+            <div class="stat-item"><strong>Оброблено:</strong> <span id="processed-per-shift-minimal">...</span> з <span>${managerGoal}</span> (<span id="percent-complete-minimal" style="font-weight: bold;">...</span>)</div>
+            <span id="stats-expand-btn" title="Розгорнути"></span>
+        </div>
+    `;
+            document.body.appendChild(popup);
+
+            const toggleBtn = popup.querySelector('#stats-toggle-btn');
+            const expandBtn = popup.querySelector('#stats-expand-btn');
+            const contentWrapper = popup.querySelector('#stats-content-wrapper');
+            const header = popup.querySelector('#stats-header');
+            const minimalView = popup.querySelector('#stats-minimal-view');
+
+            const applyCollapseState = (isCollapsed) => {
+                if (isCollapsed) {
+                    header.style.display = 'none';
+                    contentWrapper.style.display = 'none';
+                    minimalView.style.display = 'flex';
+                    popup.classList.add('collapsed');
+                } else {
+                    header.style.display = 'flex';
+                    contentWrapper.style.display = 'block';
+                    minimalView.style.display = 'none';
+                    popup.classList.remove('collapsed');
+                }
+            };
+
+            const handleToggle = async (e) => {
+                e.stopPropagation();
+                const isCurrentlyCollapsed = !popup.classList.contains('collapsed');
+                applyCollapseState(isCurrentlyCollapsed);
+                await GM_setValue('stats_popup_collapsed', isCurrentlyCollapsed);
+            };
+
+            toggleBtn.addEventListener('click', handleToggle);
+            expandBtn.addEventListener('click', handleToggle);
+
+            const isInitiallyCollapsed = await GM_getValue('stats_popup_collapsed', false);
+            applyCollapseState(isInitiallyCollapsed);
+
+            let isDragging = false, offsetX, offsetY;
+            const startDrag = (e) => {
+                if (e.target.id === 'stats-toggle-btn' || e.target.id === 'stats-expand-btn') return;
+                isDragging = true;
+                offsetX = e.clientX - popup.offsetLeft;
+                offsetY = e.clientY - popup.offsetTop;
+                popup.style.transition = 'none';
+            };
+            header.addEventListener('mousedown', startDrag);
+            minimalView.addEventListener('mousedown', startDrag);
+
+            document.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    let newLeft = e.clientX - offsetX;
+                    let newTop = e.clientY - offsetY;
+                    const maxLeft = window.innerWidth - popup.offsetWidth;
+                    const maxTop = window.innerHeight - popup.offsetHeight;
+                    newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+                    newTop = Math.max(0, Math.min(newTop, maxTop));
+                    popup.style.left = `${newLeft}px`;
+                    popup.style.top = `${newTop}px`;
+                }
+            });
+            document.addEventListener('mouseup', async () => {
+                if (isDragging) {
+                    isDragging = false;
+                    popup.style.transition = '';
+                    await GM_setValue('stats_popup_position', { top: popup.style.top, left: popup.style.left });
+                }
+            });
+
+            const savedPosition = await GM_getValue('stats_popup_position', { top: '15px', left: '15px' });
+            popup.style.top = savedPosition.top;
+            popup.style.left = savedPosition.left;
+
+            GM_addStyle(`
+        #manager-stats-popup { position: fixed; background-color: rgba(255, 255, 255, 0.9); color: #333; border: 1px solid #ddd; border-radius: 8px; padding: 12px 18px; font-family: sans-serif; font-size: 14px; z-index: 9999; box-shadow: 0 4px 10px rgba(0,0,0,0.1); backdrop-filter: blur(5px); min-width: 260px; transition: padding 0.2s ease, min-width 0.2s ease; }
+        #manager-stats-popup.collapsed { min-width: auto; padding: 8px 12px; }
+        #stats-header { display: flex; justify-content: space-between; align-items: center; font-size: 16px; font-weight: 600; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #eee; color: #111; cursor: move; user-select: none; }
+        #stats-toggle-btn, #stats-expand-btn { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; cursor: pointer; font-weight: bold; border-radius: 4px; }
+        #stats-toggle-btn:after { content: '−'; font-size: 18px; }
+        #stats-expand-btn:after { content: '+'; font-size: 18px; }
+        #stats-toggle-btn:hover, #stats-expand-btn:hover { background-color: #e9e9e9; }
+        #stats-minimal-view { display: flex; justify-content: space-between; align-items: center; user-select: none; cursor: move; }
+        .stat-item { margin-bottom: 8px; line-height: 1.4; }
+        #stats-minimal-view .stat-item { margin-bottom: 0; margin-right: 10px; }
+        .stat-item strong { font-weight: 600; color: #555; }
+        #feedback-message { text-align: center; margin-top: 12px; font-weight: bold; font-size: 15px; padding: 5px; border-radius: 5px; }
+    `);
+        }
+
+        function renderStats(shiftStats) {
+            const processedPerShift = shiftStats.total_players || 0;
+            const percentComplete = ((processedPerShift / managerGoal) * 100).toFixed(1) + '%';
+
+            document.getElementById('processed-per-shift').textContent = processedPerShift;
+            document.getElementById('shift-goal').textContent = managerGoal;
+            const percentEl = document.getElementById('percent-complete');
+            if (percentEl) percentEl.textContent = percentComplete;
+
+            document.getElementById('processed-per-shift-minimal').textContent = processedPerShift;
+            const percentElMinimal = document.getElementById('percent-complete-minimal');
+            if (percentElMinimal) percentElMinimal.textContent = percentComplete;
+
+            const SHIFT_HOURS = 11;
+            const SUPER_PACE = managerGoal / SHIFT_HOURS;
+            const STANDARD_PACE = (managerGoal * 0.875) / SHIFT_HOURS;
+            let projectedText = '0',
+                paceText = '0.00',
+                feedbackText = 'Починаємо зміну!',
+                feedbackColor = '#555',
+                feedbackBg = 'transparent';
+
+            if (processedPerShift > 0 && shiftStats.entries?.length > 0) {
+                const timestamps = shiftStats.entries.map(e => new Date(e.created_at).getTime()).filter(ts => !isNaN(ts));
+                if (timestamps.length > 0) {
+                    const startTimeOfWork = new Date(Math.min(...timestamps));
+                    const hoursWorked = (new Date() - startTimeOfWork) / 3600000;
+                    if (hoursWorked > 0) {
+                        const currentPace = processedPerShift / hoursWorked;
+                        projectedText = (currentPace * SHIFT_HOURS).toFixed(0);
+                        paceText = currentPace.toFixed(2);
+                        if (currentPace >= SUPER_PACE) {
+                            feedbackText = "Красунчик! Так тримати!";
+                            feedbackColor = "#27ae60";
+                            feedbackBg = 'rgba(46, 204, 113, 0.1)';
+                        } else if (currentPace >= STANDARD_PACE) {
+                            feedbackText = "Впевнений експерт, гарний темп!";
+                            feedbackColor = "#f39c12";
+                            feedbackBg = 'rgba(241, 196, 15, 0.1)';
+                        } else {
+                            feedbackText = "Треба піднажати!";
+                            feedbackColor = "#e74c3c";
+                            feedbackBg = 'rgba(231, 76, 60, 0.1)';
+                        }
+                    }
+                }
+            }
+
+            const projectedEl = document.getElementById('projected-total');
+            const feedbackEl = document.getElementById('feedback-message');
+            document.getElementById('current-pace').textContent = paceText;
+
+            if (percentEl) percentEl.style.color = feedbackColor;
+            if (percentElMinimal) percentElMinimal.style.color = feedbackColor;
+
+            if (projectedEl) {
+                projectedEl.textContent = projectedText;
+                projectedEl.style.color = feedbackColor;
+            }
+            if (feedbackEl) {
+                feedbackEl.textContent = feedbackText;
+                feedbackEl.style.color = feedbackColor;
+                feedbackEl.style.backgroundColor = feedbackBg;
+            }
+        }
+
+        async function updateStats(forceRefresh = false) {
+            if (!managerData.id) return;
+            try {
+                const shiftWindow = getCurrentShiftWindow();
+                const cacheKey = `stats_cache_${shiftWindow.start.toISOString()}`;
+                const cachedData = await GM_getValue(cacheKey, null);
+                let shiftStats;
+                if (!forceRefresh && cachedData) {
+                    shiftStats = cachedData;
+                } else {
+                    const startUTC = shiftWindow.start.toISOString();
+                    const endUTC = shiftWindow.end.toISOString();
+                    shiftStats = await fetchApi(`/api/get_statistics_for_period?user_id=${statsUserId}&start_utc=${startUTC}&end_utc=${endUTC}`);
+                    await GM_setValue(cacheKey, shiftStats);
+                }
+                renderStats(shiftStats);
+            } catch (error) { console.error('Статистика: Помилка при оновленні даних:', error); }
+        }
+
+        function interceptFetch() {
+            const originalFetch = window.fetch;
+            if (originalFetch.isStatsInterceptor) return;
+            window.fetch = async function(resource, config) {
+                const url = resource instanceof Request ? resource.url : resource;
+                const response = await originalFetch(resource, config);
+                if (url.includes('/api/working') && response.ok) {
+                    setTimeout(() => updateStats(true), 500);
+                }
+                return response;
+            };
+            window.fetch.isStatsInterceptor = true;
+        }
+        function getCurrentShiftWindow() {
+            const now = new Date(); const currentHour = now.getHours();
+            let shiftStart = new Date(now), shiftEnd = new Date(now);
+            if (currentHour >= 9 && currentHour < 21) {
+                shiftStart.setHours(9, 0, 0, 0); shiftEnd.setHours(21, 0, 0, 0);
+            } else {
+                if (currentHour >= 21) {
+                    shiftStart.setHours(21, 0, 0, 0); shiftEnd.setHours(9, 0, 0, 0); shiftEnd.setDate(shiftEnd.getDate() + 1);
+                } else {
+                    shiftStart.setHours(21, 0, 0, 0); shiftStart.setDate(shiftStart.getDate() - 1); shiftEnd.setHours(9, 0, 0, 0);
+                }
+            }
+            return { start: shiftStart, end: shiftEnd };
+        }
+        async function fetchApi(endpoint, options = {}) {
+            const url = `${API_BASE_URL}${endpoint}`;
+            const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', ...options.headers };
+            const response = await fetch(url, { ...options, headers });
+            if (!response.ok) {
+                console.error(`HTTP error! status: ${response.status} for URL: ${url}`);
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+        }
+
+        async function initializeStats() {
+            if (!token || !statsUserId) return;
+            await createAndDragPopup();
+            interceptFetch();
+            await updateStats(false);
+            setInterval(() => updateStats(false), 5 * 60 * 1000);
+        }
+
+        initializeStats();
+    }
+    //================= КІНЕЦЬ БЛОКУ СТАТИСТИКИ =================
+
+
+    //============== ДАШБОРД ПРОДУКТИВНОСТІ КОМАНДИ ==================
+    GM_addStyle(`
+    #dash-modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; }
+    #dash-modal-content { display: flex; flex-direction: column; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; z-index: 10001; width: 95%; max-width: 1400px; height: 90vh; box-shadow: 0 4px 15px rgba(0,0,0,0.2); font-family: sans-serif; }
+    #dash-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 15px; margin-bottom: 10px; }
+    #dash-grid-container { flex-grow: 1; overflow: auto; font-size: 12px; }
+    .dash-grid-row { display: grid; border-bottom: 1px solid #f0f0f0; align-items: center; }
+    .dash-day-header, .dash-manager-name, .dash-total-cell { padding: 8px 4px; font-weight: bold; text-align: center; }
+    .dash-day-header.clickable { cursor: pointer; transition: background 0.2s; }
+    .dash-day-header.clickable:hover { background: #f0f0f0; color: #3498db; }
+    .dash-manager-name { text-align: left; position: sticky; left: 0; background: white; z-index: 2; border-right: 1px solid #eee; padding-left: 10px; }
+    .dash-total-cell { background: #f9f9f9; border-right: 1px solid #eee; font-weight: 800; color: #2c3e50; }
+    .dash-day-cell { padding: 4px; display: flex; align-items: center; min-width: 35px; border-right: 1px solid #f9f9f9; justify-content: center; }
+    .dash-bar { height: 22px; border-radius: 3px; color: white; line-height: 22px; font-weight: bold; text-align: center; font-size: 10px; white-space: nowrap; cursor: pointer; transition: opacity 0.2s; }
+    .dash-bar:hover { opacity: 0.8; }
+    #dash-tooltip { display: none; position: fixed; background: #2c3e50; color: white; padding: 6px 12px; border-radius: 4px; font-size: 12px; z-index: 11000; pointer-events: none; transform: translateX(-50%); box-shadow: 0 4px 10px rgba(0,0,0,0.2); white-space: nowrap; }
+
+    .dash-btn {
+        background-color: #3498db;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: background-color 0.2s, transform 0.1s;
+        outline: none;
+    }
+    .dash-btn:hover { background-color: #2980b9; }
+    .dash-btn:active { transform: scale(0.98); }
+    .dash-nav-group { display: flex; align-items: center; gap: 15px; }
+
+    .shift-tabs { display: flex; gap: 5px; margin-bottom: 15px; background: #f0f0f0; padding: 5px; border-radius: 8px; width: fit-content; }
+    .shift-tab { padding: 8px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; transition: all 0.2s; border: none; background: transparent; color: #7f8c8d; }
+    .shift-tab.active { background: white; color: #3498db; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    `);
+
+    async function showTeamDashboardPopup() {
+        if (document.getElementById('dash-modal-content')) return;
+
+        const tooltip = document.createElement('div');
+        tooltip.id = 'dash-tooltip';
+        document.body.appendChild(tooltip);
+
+        const modal = document.createElement('div');
+        modal.id = 'dash-performance-wrapper';
+        modal.innerHTML = `
+        <div id="dash-modal-backdrop"></div>
+        <div id="dash-modal-content">
+            <div id="dash-header">
+                <div class="dash-nav-group">
+                    <button id="dash-prev-month" class="dash-btn">&lt;</button>
+                    <h2 id="dash-month-name" style="margin:0; color: #2c3e50;"></h2>
+                    <button id="dash-next-month" class="dash-btn">&gt;</button>
+                </div>
+                <button id="dash-close-main" class="dash-btn" style="background-color: #95a5a6;">Закрити</button>
+            </div>
+            <div id="dash-grid-container">Завантаження...</div>
+        </div>
+        `;
+        document.body.appendChild(modal);
+
+        const closeModal = () => { modal.remove(); tooltip.remove(); };
+        modal.querySelector('#dash-modal-backdrop').onclick = closeModal;
+        modal.querySelector('#dash-close-main').onclick = closeModal;
+
+        let currentDate = new Date();
+        const gridContainer = modal.querySelector('#dash-grid-container');
+        const monthNameEl = modal.querySelector('#dash-month-name');
+
+        async function loadAndRender() {
+            gridContainer.innerHTML = '<div style="padding:20px; text-align:center; color: #7f8c8d;">Завантаження даних...</div>';
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth() + 1;
+            monthNameEl.textContent = currentDate.toLocaleString('uk-UA', { month: 'long', year: 'numeric' }).toUpperCase();
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/get_team_performance?year=${year}&month=${month}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                renderGrid(data, year, month);
+            } catch (error) {
+                gridContainer.textContent = 'Помилка завантаження даних.';
+                console.error("Dashboard Error:", error);
+            }
+        }
+
+        function renderGrid(data, year, month) {
+            gridContainer.innerHTML = '';
+
+            const { performance: performanceData, goals: goalsData, teams: teamsData } = data;
+
+            if (!performanceData || Object.keys(performanceData).length === 0) {
+                gridContainer.innerHTML = '<div style="padding:20px; text-align:center;">За цей період немає даних.</div>';
+                return;
+            }
+
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const gridStyle = `180px repeat(${daysInMonth}, minmax(35px, 1fr))`;
+
+            let managers = Object.keys(performanceData);
+
+            if (managerData.status === 'Manager') {
+                const myTeamName = managerData.team;
+
+                managers = managers.filter(name => {
+                    const itsHisTeam = teamsData && teamsData[name] === myTeamName;
+                    const isMe = name === managerData.name;
+                    return itsHisTeam || isMe;
+                });
+            }
+
+            managers.sort();
+
+            const headerRow = document.createElement('div');
+            headerRow.className = 'dash-grid-row';
+            headerRow.style.gridTemplateColumns = gridStyle;
+            headerRow.appendChild(document.createElement('div'));
+
+            for (let i = 1; i <= daysInMonth; i++) {
+                const dayHeader = document.createElement('div');
+                dayHeader.className = 'dash-day-header clickable';
+                dayHeader.textContent = i;
+                dayHeader.onclick = () => {
+                    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                    showHourlyDetail(dateStr);
+                };
+                headerRow.appendChild(dayHeader);
+            }
+            gridContainer.appendChild(headerRow);
+
+            managers.forEach(managerName => {
+                const managerRow = document.createElement('div');
+                managerRow.className = 'dash-grid-row';
+                managerRow.style.gridTemplateColumns = gridStyle;
+
+                const nameCell = document.createElement('div');
+                nameCell.className = 'dash-manager-name';
+                nameCell.textContent = managerName;
+
+                if (managerName === managerData.name) {
+                    nameCell.style.color = '#3498db';
+                    nameCell.style.fontWeight = 'bold';
+                }
+
+                managerRow.appendChild(nameCell);
+
+                const managerGoal = goalsData[managerName] || 80;
+                const standardGoal = managerGoal * 0.875;
+
+                for (let i = 1; i <= daysInMonth; i++) {
+                    const dayCell = document.createElement('div');
+                    dayCell.className = 'dash-day-cell';
+                    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                    const dayData = performanceData[managerName]?.[dateStr];
+
+                    if (dayData && dayData.total > 0) {
+                        const bar = document.createElement('div');
+                        bar.className = 'dash-bar';
+                        bar.textContent = dayData.total;
+                        const percentage = (dayData.total / managerGoal) * 100;
+                        bar.style.width = Math.min(percentage, 100) + '%';
+
+                        if (dayData.total >= managerGoal) bar.style.backgroundColor = '#27ae60';
+                        else if (dayData.total >= standardGoal) bar.style.backgroundColor = '#f39c12';
+                        else bar.style.backgroundColor = '#e74c3c';
+
+                        const details = [];
+                        if (dayData.day > 0) details.push(`Денна: ${dayData.day}`);
+                        if (dayData.night > 0) details.push(`Нічна: ${dayData.night}`);
+                        bar.dataset.tooltip = details.join(', ');
+                        dayCell.appendChild(bar);
+                    }
+                    managerRow.appendChild(dayCell);
+                }
+                gridContainer.appendChild(managerRow);
+            });
+        }
+
+        async function showHourlyDetail(initialDateStr) {
+            if (document.getElementById('hourly-modal-wrapper')) return;
+
+            let currentDetailDate = new Date(initialDateStr + 'T12:00:00');
+            let currentShift = 'day';
+
+            const hourlyModal = document.createElement('div');
+            hourlyModal.id = 'hourly-modal-wrapper';
+            hourlyModal.innerHTML = `
+            <div id="dash-modal-backdrop" style="z-index: 10010;"></div>
+            <div id="dash-modal-content" style="z-index: 10011; width: 95%; height: auto; max-height: 85vh;">
+                <div id="dash-header">
+                    <div class="dash-nav-group">
+                        <button id="hourly-prev" class="dash-btn">&lt;</button>
+                        <h2 id="hourly-title" style="margin:0; color: #2c3e50;"></h2>
+                        <button id="hourly-next" class="dash-btn">&gt;</button>
+                    </div>
+                    <button id="close-hourly" class="dash-btn" style="background-color: #95a5a6;">Закрити</button>
+                </div>
+                <div class="shift-tabs">
+                    <button class="shift-tab active" data-shift="day">ДЕННА (09:00 - 21:00)</button>
+                    <button class="shift-tab" data-shift="night">НІЧНА (21:00 - 09:00)</button>
+                </div>
+                <div id="hourly-grid-container-inner" style="overflow: auto; margin-top: 15px;">Завантаження...</div>
+            </div>
+            `;
+            document.body.appendChild(hourlyModal);
+
+            const innerContainer = hourlyModal.querySelector('#hourly-grid-container-inner');
+            const titleEl = hourlyModal.querySelector('#hourly-title');
+            const tabs = hourlyModal.querySelectorAll('.shift-tab');
+
+            async function loadHourlyData() {
+                const year = currentDetailDate.getFullYear();
+                const month = String(currentDetailDate.getMonth() + 1).padStart(2, '0');
+                const day = String(currentDetailDate.getDate()).padStart(2, '0');
+                const dateStr = `${year}-${month}-${day}`;
+
+                titleEl.textContent = `Статистика за ${dateStr}`;
+                innerContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: #7f8c8d;">Завантаження...</div>';
+
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/get_day_hourly_stats?date=${dateStr}&shift=${currentShift}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await response.json();
+                    renderHourlyShiftGrid(data, innerContainer);
+                } catch (e) {
+                    innerContainer.textContent = 'Помилка завантаження.';
+                }
+            }
+
+            tabs.forEach(tab => {
+                tab.onclick = () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    currentShift = tab.dataset.shift;
+                    loadHourlyData();
+                };
+            });
+
+            hourlyModal.querySelector('#hourly-prev').onclick = () => { currentDetailDate.setDate(currentDetailDate.getDate() - 1); loadHourlyData(); };
+            hourlyModal.querySelector('#hourly-next').onclick = () => { currentDetailDate.setDate(currentDetailDate.getDate() + 1); loadHourlyData(); };
+            hourlyModal.querySelector('#close-hourly').onclick = () => hourlyModal.remove();
+            hourlyModal.querySelector('#dash-modal-backdrop').onclick = () => hourlyModal.remove();
+
+            loadHourlyData();
+        }
+
+        function renderHourlyShiftGrid(data, container) {
+            container.innerHTML = '';
+            const { stats, hours, shift, manager_ids } = data;
+            let managers = Object.keys(stats).sort();
+            const isAdmin = managerData.status === 'Admin';
+
+            if (managerData.status === 'Manager') {
+                managers = managers.filter(name => name === managerData.name);
+            }
+
+            const gridStyle = `180px 70px repeat(12, minmax(45px, 1fr))`;
+            const header = document.createElement('div');
+            header.className = 'dash-grid-row';
+            header.style.gridTemplateColumns = gridStyle;
+            header.innerHTML = '<div></div><div class="dash-total-cell">Всього</div>';
+
+            hours.forEach(h => {
+                const hDiv = document.createElement('div');
+                hDiv.className = 'dash-day-header';
+                hDiv.textContent = h + ':00';
+                hDiv.style.color = shift === 'day' ? '#f39c12' : '#9b59b6';
+                header.appendChild(hDiv);
+            });
+            container.appendChild(header);
+
+            managers.forEach(name => {
+                const row = document.createElement('div');
+                row.className = 'dash-grid-row';
+                row.style.gridTemplateColumns = gridStyle;
+
+                const nameCell = document.createElement('div');
+                nameCell.className = 'dash-manager-name';
+                nameCell.textContent = name;
+                row.appendChild(nameCell);
+
+                let shiftTotal = 0;
+                hours.forEach(h => { shiftTotal += (stats[name][h]?.count || 0); });
+
+                const totalCell = document.createElement('div');
+                totalCell.className = 'dash-total-cell';
+                totalCell.textContent = shiftTotal;
+                row.appendChild(totalCell);
+
+                hours.forEach(h => {
+                    const hourData = stats[name][h] || { count: 0, first: null, last: null };
+                    const cell = document.createElement('div');
+                    cell.className = 'dash-day-cell';
+
+                    if (hourData.count > 0) {
+                        const bar = document.createElement('div');
+                        bar.className = 'dash-bar';
+                        bar.textContent = hourData.count;
+                        bar.style.width = '100%';
+
+                        const opacity = 0.3 + (Math.min(hourData.count, 10) / 10) * 0.7;
+                        const color = shift === 'day' ? '243, 156, 18' : '155, 89, 182';
+                        bar.style.backgroundColor = `rgba(${color}, ${opacity})`;
+
+                        if (isAdmin) {
+                            bar.onmouseenter = (e) => {
+                                if (hourData.first && hourData.last) {
+                                    const rect = bar.getBoundingClientRect();
+                                    const tooltip = document.getElementById('dash-tooltip');
+                                    tooltip.innerHTML = `🕒 ${hourData.first} — ${hourData.last}`;
+                                    tooltip.style.display = 'block';
+                                    tooltip.style.left = `${rect.left + rect.width / 2}px`;
+                                    tooltip.style.top = `${rect.top - 35}px`;
+                                }
+                            };
+                            bar.onmouseleave = () => { document.getElementById('dash-tooltip').style.display = 'none'; };
+                            bar.style.cursor = 'pointer';
+                            bar.onclick = () => {
+                                const titleEl = document.getElementById('hourly-title');
+                                let dateStr = titleEl ? titleEl.textContent.replace('Статистика за ', '').trim() : '';
+                                const mId = manager_ids ? manager_ids[name] : null;
+
+                                if (mId && dateStr) {
+                                    if (shift === 'night' && parseInt(h) < 9) {
+                                        let d = new Date(dateStr + 'T12:00:00');
+                                        d.setDate(d.getDate() + 1);
+                                        dateStr = d.toISOString().split('T')[0];
+                                    }
+                                    fetchStatistics(mId, dateStr, h);
+                                }
+                            };
+                        }
+                        cell.appendChild(bar);
+                    }
+                    row.appendChild(cell);
+                });
+                container.appendChild(row);
+            });
+        }
+
+        modal.querySelector('#dash-prev-month').onclick = () => { currentDate.setMonth(currentDate.getMonth() - 1); loadAndRender(); };
+        modal.querySelector('#dash-next-month').onclick = () => { currentDate.setMonth(currentDate.getMonth() + 1); loadAndRender(); };
+
+        gridContainer.onmouseover = (e) => {
+            const bar = e.target.closest('.dash-bar');
+            if (bar?.dataset.tooltip) {
+                const rect = bar.getBoundingClientRect();
+                tooltip.textContent = bar.dataset.tooltip;
+                tooltip.style.display = 'block';
+                tooltip.style.left = `${rect.left + rect.width / 2}px`;
+                tooltip.style.top = `${rect.top - 30}px`;
+            }
+        };
+        gridContainer.onmouseout = () => { tooltip.style.display = 'none'; };
+
+        loadAndRender();
+    }
+    //================= КІНЕЦЬ ДАШБОРДУ =================
+
+
+    document.addEventListener('click', (event) => {
+        const header = event.target.closest(`#players-documents_c6`);
+
+        if (header) {
+            header.style.cursor = 'pointer';
+
+            const documentLinks = document.querySelectorAll('td a.btn.modalPreview[href]');
+            documentLinks.forEach(link => {
+                if (link.href) {
+                    window.open(link.href, '_blank');
+                }
+            });
+        }
+    });
+
+    document.addEventListener('click', (event) => {
+        const button = event.target.closest('.get-person-accounts-button');
+
+        if (button) {
+            setTimeout(() => {
+                const resultDiv = document.getElementById('result');
+                if (resultDiv && resultDiv.style.display !== 'none') {
+                    const links = resultDiv.querySelectorAll('.person-account__login a');
+                    links.forEach(link => {
+                        let href = link.getAttribute('href');
+                        if (href && href.includes('/players/playersItems/index/?Players[login]=')) {
+                            const playerId = href.split('/players/playersItems/index/?Players[login]=')[1];
+                            const domain = href.split('/players/')[0];
+                            const newHref = `${domain}/players/playersItems/search?PlayersSearchForm[number]=${playerId}`;
+                            link.setAttribute('href', newHref);
+                            console.log(`Ссылка изменена: ${href} -> ${newHref}`);
+                        }
+                    });
+                }
+            }, 500);
+        }
+    });
+
+    document.addEventListener('click', (event) => {
+        const isGridAction = event.target.closest('.applyFiltersBtn') ||
+              event.target.closest('.dropdown-multiselect-checkbox-list-apply') ||
+              event.target.closest('.pagination a') ||
+              event.target.closest('.sort-link');
+
+        if (isGridAction) {
+            setTimeout(() => addLocationButton(), 1000);
+            setTimeout(() => addLocationButton(), 2000);
+            setTimeout(() => addLocationButton(), 5000);
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            const isFilterInput = event.target.closest('.filter-container input') ||
+                  event.target.closest('.filters input');
+
+            if (isFilterInput) {
+                setTimeout(() => addLocationButton(), 2000);
+                setTimeout(() => addLocationButton(), 4000);
+            }
+        }
+    });
+
+    window.addEventListener('load', async function() {
+        addLocationButton();
+        const isUser = await checkToken();
+        const currentHost = window.location.hostname;
+        if (isUser.success) {
+            managerData = { id: isUser.id, name: isUser.name, status: isUser.status, goal: isUser.goal, work_hours: isUser.work_hours, team:isUser.team};
+            const isProgressBarEnabled = GM_getValue(progressBarDisplayKey, true);
+            if (isProgressBarEnabled && !window.location.href.includes('uploads/players_documents')) {
+                setupManagerStats(API_BASE_URL, token);
+            }
+            addMainMenuButtons();
+
+            sendActivePageInfo();
+            if (currentHost.includes('wildwinz') && currentUrl.includes('paymentsItemsOut/index')) {
+                calculatePendingAmountWildWinz();
+            }
+            // betking: нові URL для депозитів з фільтром по гравцю
+            else if (currentHost.includes('betking') && currentUrl.includes('payments/playerDeposits/index/') && currentUrl.includes('PaymentsItemsInForm')) {
+                fetchAndRenderMiniStats();
+            }
+            // інші .ua проекти: стандартний URL депозитів з фільтром по гравцю
+            else if (currentUrl.includes('payments/paymentsItemsIn/index/?PaymentsItemsInForm%5Bsearch_login%5D=')) {
+                fetchAndRenderMiniStats();
+            }
+            else if ((currentHost.endsWith('.com') || currentHost.endsWith('.app')) && currentUrl.includes('paymentsItemsOut/index')) {
+                calculatePendingAmountUSA();
+            }
+            // betking: новий URL для виводів
+            else if (currentHost.includes('betking') && currentUrl.includes('payments/playerWithdraws/index/')) {
+                calculatePendingAmount();
+                setPageSize1k();
+                checkForUpdates();
+            }
+            // інші .ua проекти: стандартний URL виводів
+            else if (currentHost.endsWith('.ua') && currentUrl.includes('paymentsItemsOut/index')) {
+                calculatePendingAmount();
+                setPageSize1k();
+                checkForUpdates();
+            } else if (currentHost.endsWith('.ua') && currentUrl.includes('players/playersItems/update')) {
+                addForeignButton();
+                enableFraudButton();
+                buttonToSave();
+                checkUserInFraudList();
+                updateBanButton();
+                checkForUpdates();
+                document.addEventListener('keydown', handleShortcut);
+                handlePopup();
+                createCheckIPButton();
+                checkAutoPayment();
+                checkBonusButton();
+                goToGoogleSheet();
+                addAgeToBirthdate();
+                addPibRow();
+                checkCardFunction();
+                setupModalHandler();
+                sendPlayerSeenInfo();
+                const isFullNumberCardsEnabled = GM_getValue(fullNumberCardDisplayKey, true);
+                if (isFullNumberCardsEnabled) {
+                    updateCardMasksFromComments();
+                }
+                const isFastPaintCardsEnabled = GM_getValue(fastPaintCardsDisplayKey, true);
+                if (isFastPaintCardsEnabled) {
+                    changeCardStatus();
+                    new MutationObserver(() => {
+                        changeCardStatus();
+                    }).observe(document.querySelector('#payments-cards-masks-parent'), { childList: true, subtree: true });
+                }
+                await activeUrlsManagers();
+                await checkUnreadTlComments(managerData.id)
+            } else if (currentHost.includes('wildwinz') && currentUrl.includes('players/playersItems/update')) {
+                handlePopupWildWinz();
+                addForeignButton();
+                buttonToSave();
+                checkUserInFraudList();
+                await activeUrlsManagers();
+                updateBanButton();
+                checkForUpdates();
+                sendPlayerSeenInfo();
+                await checkUnreadTlComments(managerData.id)
+            } else if ((currentHost.endsWith('.com') || currentHost.endsWith('.app')) && currentUrl.includes('players/playersItems/update')) {
+                createUSAPopupBox();
+                analyzeTransaction();
+                buttonToSave();
+                disablePromoOffersUSA();
+                checkUserInFraudList();
+                addPibRow();
+                sendPlayerSeenInfo();
+                checkForUpdates();
+                await activeUrlsManagers();
+                await checkUnreadTlComments(managerData.id)
+            } else if ((currentHost.endsWith('.com') || currentHost.endsWith('.app')) && currentUrl.includes('playersItems/balanceLog/')) {
+                setPageSize1k()
+            } else if (currentUrl.includes('88beef36-f0a8-476f-a977-a885afe5d23f') ||currentUrl.includes('c1265a12-4ff3-4b1a-a893-2fa9e9d6a205') || currentUrl.includes('92548677-d140-49c4-b5e5-9015673f461a') || currentUrl.includes('3fe70d7e-65c7-4736-a707-6f40d3de125b') || currentUrl.includes('b301aace-d9bb-4c7e-8efc-5d97782ab294') || currentUrl.includes('72c0a614-e695-4cb9-b884-465b04cfb2c5') || currentUrl.includes('6705e06d-cf36-47e5-ace3-0400e15b2ce2')) {
+                powerBIfetchHighlightedValues();
+                checkForUpdates();
+                powerBImakeCellsClickable();
+                new MutationObserver(() => {
+                    powerBIfetchHighlightedValues();
+                    powerBImakeCellsClickable();
+                }).observe(document.body, { childList: true, subtree: true });
+            }
+            else if (currentHost.endsWith('.ua') &&currentUrl.includes('playersItems/balanceLog/')) {
+                createFloatingButton(buttonImageUrl);
+            } else if (currentUrl.includes('playersItems/transactionLog/')) {
+                initTransactionsPage();
+                processTableRows();
+                observeDOMChanges(processTableRows);
+                makeBonusClickable();
+            }
+        } else {
+            console.log('User is not logged in or token is invalid');
+            GM_deleteValue('authToken');
+            createLoginForm();
+        }
+    });
+})();
