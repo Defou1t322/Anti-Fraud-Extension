@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Anti-Fraud Extension Fork
+// @name         Anti-Fraud Extension /Fork
 // @namespace    http://tampermonkey.net/
-// @version      7.1.9
-// @description  Anti-Fraud Extension Fork
-// @author       Maksym Rudyi fork Eduard
+// @version      7.1.8
+// @description  Anti-Fraud Extension
+// @author       Maksym Rudyi /fork Eduard
 // @match        https://admin.betking.com.ua/*
 // @match        https://admin.777.ua/*
 // @match        https://admin.vegas.ua/*
@@ -25,8 +25,8 @@
 // @match        https://admin.dexyplay.com/*
 // @match        https://admin.spintime.app/*
 // @match        https://app.powerbi.com/*
-// @updateURL 	 https://github.com/Defou1t322/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
-// @downloadURL  https://github.com/Defou1t322/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js
+// @updateURL 	 https://github.com/Defou1t322/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension%20Fork.user.js
+// @downloadURL  https://github.com/Defou1t322/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension%20Fork.user.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -7916,7 +7916,7 @@ ${fraud.manager === managerName ? `
                 document.body.appendChild(img);
 
                 img.addEventListener("click", () => {
-                    window.open("https://github.com/Defou1t322/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension.user.js", "_blank");
+                    window.open("https://github.com/Defou1t322/Anti-Fraud-Extension/raw/main/Anti-Fraud%20Extension%20Fork.user.js", "_blank");
                 });
 
                 function moveIconSmoothly() {
